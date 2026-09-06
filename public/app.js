@@ -138,7 +138,88 @@ async function discoverFromGroup(id){try{const list=await api(`/api/discover?gro
 
 async function renderEvents(){events=await api('/api/events');page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">MEET IRL ✨</div><h1>Events & Hangouts</h1><p>Join something fun, meet your community and turn online vibes into real memories.</p></div><div class="heroBadge">${events.length}<span>events</span></div></div><div class="title"><div><h2>Upcoming events</h2><p class="muted">Community events from your VibeMeet circles.</p></div><button class="primary" onclick="createEvent()">＋ Create event</button></div><div class="grid">${events.map(e=>`<div class="card event"><div class="eventDate">${e.starts_at?new Date(e.starts_at).toLocaleString():''}</div><h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'Community hangout')}</p><p>📍 ${esc(e.location||'Online')} · 👥 ${e.attendees||0} joined</p><span class="chip">${e.joined?'✓ Joined':'Open'}</span>${e.joined?'':'<button class="primary full" onclick="joinEvent('+e.id+')">Join event</button>'}</div>`).join('')||'<div class="card"><h3>No upcoming events</h3><p class="muted">Create the first vibe in your community.</p></div>'}</div></div>`}
 async function joinEvent(id){try{await api(`/api/events/${id}/join`,{method:'POST'});toast('🎉 You joined the event');render('events')}catch(e){toast(e.message)}}
-async function createEvent(){if(!activeGroup){groups=await api('/api/groups');const joined=groups.find(g=>g.joined);if(joined)activeGroup=joined}if(!activeGroup)return toast('Join a group first, then create its event.');const title=prompt('Event name');if(!title)return;const description=prompt('Short description')||'';const location=prompt('Location or Online')||'Online';const when=prompt('Date/time, e.g. 2026-09-20 18:00');if(!when)return;const dt=new Date(when);if(Number.isNaN(dt.getTime()))return toast('Invalid date/time');try{await api(`/api/groups/${activeGroup.id}/events`,{method:'POST',body:{title,description,location,startsAt:dt.toISOString()}});toast('📅 Event created');render('events')}catch(e){toast(e.message)}}
+async function createEvent(){
+  const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
+  if(!vipActive){
+    toast('💎 Event creation is a VIP feature. Unlock VIP to create events.');
+    return render('vip');
+  }
+
+  if(!activeGroup){
+    groups=await api('/api/groups');
+    const joined=groups.find(g=>g.joined);
+    if(joined) activeGroup=joined;
+  }
+
+  if(!activeGroup){
+    toast('Join a community first.');
+    return render('groups');
+  }
+
+  const old=document.getElementById('createEventModal');
+  if(old) old.remove();
+
+  const modal=document.createElement('div');
+  modal.id='createEventModal';
+  modal.className='modalOverlay';
+  modal.innerHTML=`
+    <div class="card" style="max-width:560px;width:92%;padding:24px">
+      <div class="eyebrow">VIP COMMUNITY EVENT ✨</div>
+      <h2>Create an event</h2>
+      <p class="muted">Create a memorable meetup for ${esc(activeGroup.name||'your community')}.</p>
+
+      <label>Event name</label>
+      <input id="eventTitle" class="input" placeholder="e.g. Weekend Coding Meetup">
+
+      <label>Description</label>
+      <textarea id="eventDescription" class="input" rows="4" placeholder="Tell people what this event is about"></textarea>
+
+      <label>Location</label>
+      <input id="eventLocation" class="input" placeholder="Location or Online" value="Online">
+
+      <label>Date & time</label>
+      <input id="eventDate" class="input" type="datetime-local">
+
+      <div class="actions" style="margin-top:18px">
+        <button class="secondary" onclick="document.getElementById('createEventModal')?.remove()">Cancel</button>
+        <button class="primary" id="saveEventBtn">✨ Create Event</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('saveEventBtn').onclick=async()=>{
+    const title=document.getElementById('eventTitle').value.trim();
+    const description=document.getElementById('eventDescription').value.trim();
+    const location=document.getElementById('eventLocation').value.trim()||'Online';
+    const when=document.getElementById('eventDate').value;
+
+    if(!title)return toast('Enter an event name.');
+    if(!when)return toast('Choose a date and time.');
+
+    const dt=new Date(when);
+    if(Number.isNaN(dt.getTime()))return toast('Invalid date/time.');
+
+    try{
+      await api(`/api/groups/${activeGroup.id}/events`,{
+        method:'POST',
+        body:{
+          title,
+          description,
+          location,
+          startsAt:dt.toISOString()
+        }
+      });
+
+      modal.remove();
+      toast('📅 Event created successfully!');
+      render('events');
+    }catch(e){
+      toast(e.message);
+    }
+  };
+}
 
 async function renderCompatibility(refresh=false){const qs=await api('/api/compatibility/questions');if(refresh||!Object.keys(answerDraft).length){const saved=await api('/api/compatibility/answers').catch(()=>[]);const savedMap={};arr(saved).forEach(x=>savedMap[x.question_id]=x.answer);answerDraft={...savedMap}}const safeOption=v=>encodeURIComponent(String(v??''));page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR VIBE DNA 🧩</div><h1>Compatibility</h1><p>Quick choices help VibeMeet find people who naturally click with you.</p></div></div><div class="grid" style="margin-top:18px">${qs.map(q=>`<div class="card"><div class="eyebrow">QUESTION</div><h3>${esc(q.question)}</h3><div class="actions"><button type="button" class="${answerDraft[q.id]===q.option_a?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_a)}'))">${esc(q.option_a)}</button><button type="button" class="${answerDraft[q.id]===q.option_b?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_b)}'))">${esc(q.option_b)}</button></div></div>`).join('')}</div><button type="button" class="primary" style="margin-top:18px" onclick="saveAnswers()">Save my vibe ✨</button></div>`}
 function chooseAnswer(id,answer){answerDraft[id]=answer;renderCompatibility(false)}
