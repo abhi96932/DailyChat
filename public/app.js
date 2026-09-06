@@ -44,7 +44,7 @@ async function sendChatImage(){
   try{
     const data=await fileToChatImage(file);
     const m=await api(`/api/dm/${activePerson.id}/image`,{method:'POST',body:{dataUrl:data}});
-    appendLive({...m,sender_id:user.id,sender_name:user.name});
+    // The server broadcasts the saved image through Socket.IO. Do not append the API response here, or the sender sees it twice.
     toast('📷 Image sent');
   }catch(e){toast(e.message)}finally{if(input)input.value=''}
 }
