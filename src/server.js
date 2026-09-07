@@ -194,13 +194,13 @@ app.post("/api/groups", auth, async(req,res)=>{
 
     try{
       const group = await q(
-        `INSERT INTO groups(name,description,slug,created_by)
-          VALUES($1,$2,$3,$4)
+        `INSERT INTO groups(name,description,slug,category,created_by)
+          VALUES($1,$2,$3,$4,$5)
           RETURNING *`,
         [
         name.trim(),
         description?.trim() || "",
-        name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""),
+        name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""),"General",
         req.user.id
         ]
       );
