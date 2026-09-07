@@ -228,17 +228,16 @@ async function createCommunity(){
     toast(e.message);
   }
 }
+
 async function createCommunityEvent(){
-  const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
-  if(!vipActive){
-    toast('💎 Event creation is a VIP feature. Unlock VIP to create events.');
-    return render('vip');
-  }
+  const vipActive =
+    user?.vip_until &&
+    new Date(user.vip_until) > new Date();
 
   if(!activeGroup){
-    groups=await api('/api/groups');
-    const joined=groups.find(g=>g.joined);
-    if(joined) activeGroup=joined;
+    groups = await api('/api/groups');
+    const joined = groups.find(g => g.joined);
+    if(joined) activeGroup = joined;
   }
 
   if(!activeGroup){
@@ -246,52 +245,142 @@ async function createCommunityEvent(){
     return render('groups');
   }
 
-  const old=document.getElementById('createEventModal');
+  const old = document.getElementById('createEventModal');
   if(old) old.remove();
 
-  const modal=document.createElement('div');
-  modal.id='createEventModal';
-  modal.className='modalOverlay';
-  modal.innerHTML=`
+  const modal = document.createElement('div');
+  modal.id = 'createEventModal';
+  modal.className = 'modalOverlay';
+
+  modal.innerHTML = `
     <div class="card" style="max-width:560px;width:92%;padding:24px">
-      <div class="eyebrow">VIP COMMUNITY EVENT ✨</div>
+      <div class="eyebrow">${vipActive ? 'VIP COMMUNITY EVENT ✨' : 'COMMUNITY EVENT · ₹29'}</div>
       <h2>Create an event</h2>
-      <p class="muted">Create a memorable meetup for ${esc(activeGroup.name||'your community')}.</p>
+      <p class="muted">
+        Create a memorable meetup for ${esc(activeGroup.name || 'your community')}.
+      </p>
 
       <label>Event name</label>
-      <input id="eventTitle" class="input" placeholder="e.g. Weekend Coding Meetup">
+      <input id="eventTitle" class="input"
+        placeholder="e.g. Weekend Coding Meetup">
 
       <label>Description</label>
-      <textarea id="eventDescription" class="input" rows="4" placeholder="Tell people what this event is about"></textarea>
+      <textarea id="eventDescription" class="input" rows="4"
+        placeholder="Tell people what this event is about"></textarea>
 
       <label>Location</label>
-      <input id="eventLocation" class="input" placeholder="Location or Online" value="Online">
+      <input id="eventLocation" class="input"
+        placeholder="Location or Online" value="Online">
 
       <label>Date & time</label>
       <input id="eventDate" class="input" type="datetime-local">
 
       <div class="actions" style="margin-top:18px">
-        <button class="secondary" onclick="document.getElementById('createEventModal')?.remove()">Cancel</button>
-        <button class="primary" id="saveEventBtn">✨ Create Event</button>
+        <button class="secondary"
+          onclick="document.getElementById('createEventModal')?.remove()">
+          Cancel
+        </button>
+
+        <button class="primary" id="saveEventBtn">
+          ${vipActive ? '✨ Create Event' : '✨ Pay ₹29 & Create Event'}
+        </button>
       </div>
     </div>
   `;
 
   document.body.appendChild(modal);
 
-  document.getElementById('saveEventBtn').onclick=async()=>{
-    const title=document.getElementById('eventTitle').value.trim();
-    const description=document.getElementById('eventDescription').value.trim();
-    const location=document.getElementById('eventLocation').value.trim()||'Online';
-    const when=document.getElementById('eventDate').value;
+  document.getElementById('saveEventBtn').onclick = async () => {
+    const title =
+      document.getElementById('eventTitle').value.trim();
 
-    if(!title)return toast('Enter an event name.');
-    if(!when)return toast('Choose a date and time.');
+    const description =
+      document.getElementById('eventDescription').value.trim();
 
-    const dt=new Date(when);
-    if(Number.isNaN(dt.getTime()))return toast('Invalid date/time.');
+    const location =
+      document.getElementById('eventLocation').value.trim() || 'Online';
+
+    const when =
+      document.getElementById('eventDate').value;
+
+    if(!title) return toast('Enter an event name.');
+    if(!when) return toast('Choose a date and time.');
+
+    const dt = new Date(when);
+
+    if(Number.isNaN(dt.getTime())){
+      return toast('Invalid date/time.');
+    }
 
     try{
+      // Free users pay ₹29 first
+      if(!vipActive){
+        const o = await api('/api/features/order',{
+          method:'POST',
+          body:{product:'event_create'}
+        });
+
+        await loadRazorpay();
+
+        const checkout = new Razorpay({
+          key:o.keyId,
+          amount:o.amount,
+          currency:'INR',
+          name:'VibeMeet',
+          description:'VibeMeet Event Creation · ₹29',
+          order_id:o.orderId,
+
+          prefill:{
+            name:user?.name || '',
+            email:user?.email || ''
+          },
+
+          theme:{
+            color:'#6b4ce6'
+          },
+
+          modal:{
+            ondismiss:()=>{
+              toast('Payment cancelled');
+            }
+          },
+
+          handler:async r=>{
+            try{
+              await api('/api/features/verify',{
+                method:'POST',
+                body:{
+                  orderId:r.razorpay_order_id,
+                  paymentId:r.razorpay_payment_id,
+                  signature:r.razorpay_signature
+                }
+              });
+
+              await api(`/api/groups/${activeGroup.id}/events`,{
+                method:'POST',
+                body:{
+                  title,
+                  description,
+                  location,
+                  startsAt:dt.toISOString()
+                }
+              });
+
+              modal.remove();
+              toast('📅 Event created successfully!');
+              render('events');
+
+            }catch(e){
+              toast(e.message);
+            }
+          }
+        });
+
+        checkout.open();
+        return;
+      }
+
+      // VIP users create directly
       await api(`/api/groups/${activeGroup.id}/events`,{
         method:'POST',
         body:{
@@ -305,6 +394,7 @@ async function createCommunityEvent(){
       modal.remove();
       toast('📅 Event created successfully!');
       render('events');
+
     }catch(e){
       toast(e.message);
     }

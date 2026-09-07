@@ -239,6 +239,42 @@ app.get("/api/groups/:id/members",auth,async(req,res)=>{const r=await q(`SELECT 
 app.get("/api/groups/:id/messages",auth,async(req,res)=>{const r=await q(`SELECT m.id,m.body,m.attachment_data,m.attachment_mime,m.created_at,u.id sender_id,u.name sender_name,u.avatar FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.group_id=$1 ORDER BY m.created_at DESC LIMIT 100`,[req.params.id]);res.json(r.rows.reverse())});
 app.get("/api/events",auth,async(req,res)=>{const r=await q(`SELECT e.*,g.name group_name,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$1) AS joined FROM events e JOIN groups g ON g.id=e.group_id LEFT JOIN event_members em ON em.event_id=e.id WHERE e.starts_at>=NOW()-INTERVAL '1 day' GROUP BY e.id,g.name ORDER BY e.starts_at LIMIT 100`,[req.user.id]);res.json(r.rows)});
 app.post("/api/groups/:id/events",auth,async(req,res)=>{
+  const vip = await q(
+  "SELECT vip_until FROM users WHERE id=$1",
+  [req.user.id]
+);
+
+const isVip =
+  vip.rows[0]?.vip_until &&
+  new Date(vip.rows[0].vip_until) > new Date();
+
+let purchaseId = null;
+
+if(!isVip){
+  const purchase = await q(
+    `UPDATE feature_purchases
+     SET status='used'
+     WHERE id=(
+       SELECT id
+       FROM feature_purchases
+       WHERE user_id=$1
+         AND product='event_create'
+         AND status='paid'
+       ORDER BY id ASC
+       LIMIT 1
+     )
+     RETURNING id`,
+    [req.user.id]
+  );
+
+  if(!purchase.rowCount){
+    return res.status(402).json({
+      error:"₹29 payment is required to create an event."
+    });
+  }
+
+  purchaseId = purchase.rows[0].id;
+}
   
 
   const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);if(!member.rowCount)return res.status(403).json({error:"Join the group first"});const {title,description,startsAt,location}=req.body;if(!title||!startsAt)return res.status(400).json({error:"Title and start time required"});const r=await q("INSERT INTO events(group_id,creator_id,title,description,starts_at,location) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",[req.params.id,req.user.id,String(title).slice(0,120),String(description||"").slice(0,500),startsAt,String(location||"").slice(0,150)]);res.json(r.rows[0])});
