@@ -13,9 +13,74 @@ dotenv.config();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const app=express(),server=http.createServer(app); app.set("trust proxy",1);
 const io=new Server(server,{cors:{origin:process.env.CORS_ORIGIN||true,methods:["GET","POST"]}});
+const subscriptionsReady = q(`
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id TEXT UNIQUE NOT NULL,
+    payment_id TEXT,
+    amount_paise INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'created',
+    product TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+const featurePurchasesReady = q(`
+  CREATE TABLE IF NOT EXISTS feature_purchases (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    amount_paise INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'created',
+    order_id TEXT UNIQUE,
+    payment_id TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+
+const superLikesReady = q(`
+  CREATE TABLE IF NOT EXISTS super_likes (
+    id SERIAL PRIMARY KEY,
+    sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+
+const boostsReady = q(`
+  CREATE TABLE IF NOT EXISTS profile_boosts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+  )
+`);
 const profilePhotosReady=q(`CREATE TABLE IF NOT EXISTS profile_photos (id SERIAL PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,data TEXT NOT NULL,mime TEXT NOT NULL,position INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(user_id,position))`).catch(e=>{console.error('profile_photos init failed',e);throw e});
+const notificationsReady=q(`CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  read_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+  );`);
 const messagingFeaturesReady=(async()=>{await q("ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL");await q("ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ");await q("CREATE TABLE IF NOT EXISTS message_reactions (id SERIAL PRIMARY KEY,message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,emoji VARCHAR(16) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(message_id,user_id,emoji))");await q("CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)");await q("CREATE INDEX IF NOT EXISTS idx_messages_dm_unread ON messages(receiver_id,sender_id,read_at) WHERE receiver_id IS NOT NULL")})().catch(e=>{console.error('messaging features init failed',e);throw e});
 const buckets=new Map();
+async function createNotification(userId,actorId,type,title,body){
+  try{
+    await q(
+      `INSERT INTO notifications
+       (user_id,actor_id,type,title,body)
+       VALUES($1,$2,$3,$4,$5)`,
+      [userId,actorId,type,title,body||null]
+    );
+  }catch(e){
+    console.error("Notification error:",e.message);
+  }
+}
 function rateLimit({windowMs=60_000,max=120,keyFn=req=>req.ip}={}){return(req,res,next)=>{const key=keyFn(req),now=Date.now();let b=buckets.get(key);if(!b||now-b.start>windowMs)b={start:now,count:0};b.count++;buckets.set(key,b);if(b.count>max)return res.status(429).json({error:"Too many requests. Please try again shortly."});next()}}
 const authLimiter=rateLimit({windowMs:15*60_000,max:25}),apiLimiter=rateLimit({windowMs:60_000,max:240}),messageLimiter=rateLimit({windowMs:10_000,max:30,keyFn:req=>`${req.ip}:${req.user?.id||"anon"}`});
 app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
@@ -27,6 +92,35 @@ const userSelect=`id,name,email,avatar,bio,role,verified,vip_until,call_pass_unt
 app.post("/api/auth/register",authLimiter,async(req,res)=>{try{const {name,email,password,gender,matchPreference,mode,age,city,college,course,relationshipIntent,interests,languages}=req.body;if(!name||name.trim().length<2||name.trim().length>40||!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!password||password.length<8)return res.status(400).json({error:"Name, valid email and 8+ character password required"});const u=await register(name.trim(),email.trim(),password,{gender,matchPreference,mode,age:Number(age)||null,city,college,course,relationshipIntent,interests,languages});res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
 app.post("/api/auth/guest",authLimiter,async(_req,res)=>{try{const u=await guest();res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
 app.post("/api/auth/login",authLimiter,async(req,res)=>{try{const u=await login(req.body.email,req.body.password);res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
+app.get("/api/notifications",auth,async(req,res)=>{
+  try{
+    const r=await q(`
+      SELECT n.*, u.name AS actor_name, u.avatar AS actor_avatar
+      FROM notifications n
+      LEFT JOIN users u ON u.id=n.actor_id
+      WHERE n.user_id=$1
+      ORDER BY n.created_at DESC
+      LIMIT 50
+    `,[req.user.id]);
+
+    res.json(r.rows);
+  }catch(e){
+    res.status(500).json({error:e.message});
+  }
+});
+app.post("/api/notifications/read",auth,async(req,res)=>{
+  try{
+    await q(
+      `UPDATE notifications
+       SET read_at=NOW()
+       WHERE user_id=$1 AND read_at IS NULL`,
+      [req.user.id]
+    );
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:e.message});
+  }
+});
 app.get("/api/me",auth,async(req,res)=>{const r=await q(`SELECT ${userSelect} FROM users WHERE id=$1`,[req.user.id]);res.json(r.rows[0])});
 function parseAvatarData(data){
   if(typeof data!=="string") throw Object.assign(new Error("Photo data is required"),{status:400});
@@ -51,6 +145,34 @@ app.post("/api/me/photos/reorder",auth,async(req,res)=>{try{await profilePhotosR
 app.patch("/api/me",auth,async(req,res)=>{const allowedGender=["male","female","other","prefer_not_to_say"],allowedPref=["any","same","opposite"],allowedMode=["dating","friendship","community"];const b=req.body;const gender=allowedGender.includes(b.gender)?b.gender:null,pref=allowedPref.includes(b.matchPreference)?b.matchPreference:null,mode=allowedMode.includes(b.mode)?b.mode:null;if(!gender||!pref||!mode)return res.status(400).json({error:"Invalid profile preference"});const age=b.age?Math.max(18,Math.min(100,Number(b.age))):null;const interests=Array.isArray(b.interests)?b.interests.map(String).map(x=>x.trim()).filter(Boolean).slice(0,30):[];const languages=Array.isArray(b.languages)?b.languages.map(String).map(x=>x.trim()).filter(Boolean).slice(0,10):[];const avatar=typeof b.avatar==='string'&&b.avatar.length<=5_500_000?b.avatar:"";const name=String(b.name||req.user.name).trim().slice(0,40)||req.user.name;await q(`UPDATE users SET name=$1,avatar=$2,bio=$3,gender=$4,match_preference=$5,mode=$6,age=$7,city=$8,college=$9,course=$10,relationship_intent=$11,interests=$12,languages=$13 WHERE id=$14`,[name,avatar,String(b.bio||"").slice(0,280),gender,pref,mode,age,String(b.city||"").slice(0,80),String(b.college||"").slice(0,120),String(b.course||"").slice(0,100),String(b.relationshipIntent||"open_to_connections").slice(0,40),interests,languages,req.user.id]);const r=await q(`SELECT ${userSelect} FROM users WHERE id=$1`,[req.user.id]);res.json(r.rows[0])});
 
 // Communities and events
+app.post("/api/groups", auth, async(req,res)=>{
+  try{
+    const {name, description} = req.body;
+
+    if(!name || !name.trim()){
+      return res.status(400).json({error:"Community name is required"});
+    }
+
+    const group = await q(
+      `INSERT INTO groups(name,description,created_by)
+       VALUES($1,$2,$3)
+       RETURNING *`,
+      [name.trim(), description?.trim() || "", req.user.id]
+    );
+
+    await q(
+      `INSERT INTO group_members(group_id,user_id)
+       VALUES($1,$2)
+       ON CONFLICT DO NOTHING`,
+      [group.rows[0].id, req.user.id]
+    );
+
+    res.json(group.rows[0]);
+  }catch(e){
+    console.error("Create community error:",e.message);
+    res.status(500).json({error:"Unable to create community"});
+  }
+});
 app.get("/api/groups",auth,async(req,res)=>{const r=await q(`SELECT g.*,COUNT(gm.user_id)::int AS members,EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$1) AS joined FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id GROUP BY g.id ORDER BY members DESC,g.name`,[req.user.id]);res.json(r.rows)});
 app.post("/api/groups/:id/join",auth,async(req,res)=>{await q("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true})});
 app.post("/api/groups/:id/leave",auth,async(req,res)=>{await q("DELETE FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);res.json({ok:true})});
@@ -78,9 +200,66 @@ app.get("/api/discover",auth,async(req,res)=>{const me=(await q(`SELECT * FROM u
 app.post("/api/swipes",auth,async(req,res)=>{const target=Number(req.body.targetId),direction=req.body.direction;if(!Number.isInteger(target)||target===req.user.id||!['like','pass'].includes(direction))return res.status(400).json({error:"Invalid swipe"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,$3) ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction=EXCLUDED.direction,created_at=NOW()",[req.user.id,target,direction]);let matched=false;if(direction==='like'){const reciprocal=await q("SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",[target,req.user.id]);if(reciprocal.rowCount){const a=Math.min(req.user.id,target),b=Math.max(req.user.id,target);await q("INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[a,b]);matched=true;io.to(`user:${target}`).emit("new:match",{userId:req.user.id})}}res.json({ok:true,matched})});
 app.get("/api/matches",auth,async(req,res)=>{const r=await q(`SELECT m.id,CASE WHEN m.user1_id=$1 THEN u2.id ELSE u1.id END user_id,CASE WHEN m.user1_id=$1 THEN u2.name ELSE u1.name END name,CASE WHEN m.user1_id=$1 THEN u2.avatar ELSE u1.avatar END avatar,CASE WHEN m.user1_id=$1 THEN u2.verified ELSE u1.verified END verified FROM matches m JOIN users u1 ON u1.id=m.user1_id JOIN users u2 ON u2.id=m.user2_id WHERE m.user1_id=$1 OR m.user2_id=$1 ORDER BY m.created_at DESC`,[req.user.id]);res.json(r.rows)});
 app.get("/api/likes",auth,async(req,res)=>{
-  const incoming=await q(`SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,u.age,u.city,u.college,u.course,u.interests,s.created_at AS liked_at,EXISTS(SELECT 1 FROM matches m WHERE (m.user1_id=$1 AND m.user2_id=u.id) OR (m.user1_id=u.id AND m.user2_id=$1)) AS matched FROM swipes s JOIN users u ON u.id=s.swiper_id WHERE s.target_id=$1 AND s.direction='like' AND u.status<>'banned' AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1)) ORDER BY s.created_at DESC`,[req.user.id]);
-  const outgoing=await q(`SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,u.age,u.city,u.college,u.course,u.interests,s.created_at AS liked_at,EXISTS(SELECT 1 FROM matches m WHERE (m.user1_id=$1 AND m.user2_id=u.id) OR (m.user1_id=u.id AND m.user2_id=$1)) AS matched FROM swipes s JOIN users u ON u.id=s.target_id WHERE s.swiper_id=$1 AND s.direction='like' AND u.status<>'banned' AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1)) ORDER BY s.created_at DESC`,[req.user.id]);
-  res.json({incoming:incoming.rows.filter(x=>!x.matched),outgoing:outgoing.rows.filter(x=>!x.matched)});
+  const vip=await q(
+    `SELECT vip_until>NOW() AS active FROM users WHERE id=$1`,
+    [req.user.id]
+  );
+  const vipActive=!!vip.rows[0]?.active;
+
+  const incoming=await q(
+    `SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,
+      u.age,u.city,u.college,u.course,u.interests,
+      s.created_at AS liked_at,
+      EXISTS(
+        SELECT 1 FROM matches m
+        WHERE (m.user1_id=$1 AND m.user2_id=u.id)
+           OR (m.user1_id=u.id AND m.user2_id=$1)
+      ) AS matched
+    FROM swipes s
+    JOIN users u ON u.id=s.swiper_id
+    WHERE s.target_id=$1
+      AND s.direction='like'
+      AND u.status<>'banned'
+      AND NOT EXISTS(
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_id=$1 AND b.blocked_id=u.id)
+           OR (b.blocker_id=u.id AND b.blocked_id=$1)
+      )
+    ORDER BY s.created_at DESC`,
+    [req.user.id]
+  );
+
+  const outgoing=await q(
+    `SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,
+      u.age,u.city,u.college,u.course,u.interests,
+      s.created_at AS liked_at,
+      EXISTS(
+        SELECT 1 FROM matches m
+        WHERE (m.user1_id=$1 AND m.user2_id=u.id)
+           OR (m.user1_id=u.id AND m.user2_id=$1)
+      ) AS matched
+    FROM swipes s
+    JOIN users u ON u.id=s.target_id
+    WHERE s.swiper_id=$1
+      AND s.direction='like'
+      AND u.status<>'banned'
+      AND NOT EXISTS(
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_id=$1 AND b.blocked_id=u.id)
+           OR (b.blocker_id=u.id AND b.blocked_id=$1)
+      )
+    ORDER BY s.created_at DESC`,
+    [req.user.id]
+  );
+
+  const incomingRows=incoming.rows.filter(x=>!x.matched);
+
+  res.json({
+    incoming:vipActive?incomingRows:incomingRows.slice(0,1),
+    incomingCount:incomingRows.length,
+    outgoing:outgoing.rows.filter(x=>!x.matched),
+    vipActive
+  });
 });
 
 
@@ -100,6 +279,119 @@ app.post("/api/reports",auth,async(req,res)=>{const {reportedUserId,messageId,re
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET?new Razorpay({key_id:process.env.RAZORPAY_KEY_ID,key_secret:process.env.RAZORPAY_KEY_SECRET}):null;
 async function createOrder(req,res,product){if(!razorpay)return res.status(503).json({error:"Payments not configured"});const amount=product==='vip'?499:Number(process.env.CALL_PASS_AMOUNT||99),days=Number(process.env.CALL_PASS_DAYS||7);const order=await razorpay.orders.create({amount:amount*100,currency:'INR',receipt:`${product}_${req.user.id}_${Date.now()}`});await q("INSERT INTO subscriptions(user_id,order_id,amount_paise,status,product) VALUES($1,$2,$3,'created',$4)",[req.user.id,order.id,amount*100,product]);res.json({orderId:order.id,amount:amount*100,keyId:process.env.RAZORPAY_KEY_ID,days})}
 app.post("/api/vip/order",auth,(req,res)=>createOrder(req,res,'vip'));app.post("/api/call-pass/order",auth,(req,res)=>createOrder(req,res,'call_pass'));
+const FEATURE_PRICES = {
+  community_create: 29,
+  event_create: 29,
+  extra_like: 19,
+  super_like: 49,
+  boost: 99
+};
+
+async function createFeatureOrder(req, res, product) {
+  try {
+    if (!razorpay) {
+      return res.status(503).json({ error: "Payments not configured" });
+    }
+
+    const price = FEATURE_PRICES[product];
+
+    if (!price) {
+      return res.status(400).json({ error: "Invalid feature" });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: price * 100,
+      currency: "INR",
+      receipt: `${product}_${req.user.id}_${Date.now()}`
+    });
+
+    await q(
+      `INSERT INTO feature_purchases
+       (user_id, product, amount_paise, status, order_id)
+       VALUES ($1,$2,$3,'created',$4)`,
+      [req.user.id, product, price * 100, order.id]
+    );
+
+    res.json({
+      orderId: order.id,
+      amount: price * 100,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      product
+    });
+  } catch (e) {
+    console.error("Feature order error:", e.message);
+    res.status(500).json({ error: "Unable to create payment order" });
+  }
+}
+
+app.post("/api/features/order", auth, async (req, res) => {
+  await createFeatureOrder(req, res, req.body.product);
+});
+app.post("/api/features/verify", auth, async (req, res) => {
+  try {
+    const { orderId, paymentId, signature } = req.body;
+
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ error: "Payments not configured" });
+    }
+
+    if (!orderId || !paymentId || !signature) {
+      return res.status(400).json({ error: "Payment details are required" });
+    }
+
+    const expected = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(orderId + "|" + paymentId)
+      .digest("hex");
+
+    if (
+      signature.length !== expected.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expected)
+      )
+    ) {
+      return res.status(400).json({ error: "Invalid payment signature" });
+    }
+
+    const purchase = await q(
+      `UPDATE feature_purchases
+       SET payment_id=$1,status='paid'
+       WHERE user_id=$2
+         AND order_id=$3
+         AND status='created'
+       RETURNING id,product,amount_paise`,
+      [paymentId, req.user.id, orderId]
+    );
+
+    if (!purchase.rowCount) {
+      return res.status(409).json({
+        error: "Payment already processed or order not found"
+      });
+    }
+
+    const product = purchase.rows[0].product;
+
+    if (product === "boost") {
+      await q(
+        `INSERT INTO profile_boosts
+         (user_id,started_at,expires_at,status)
+         VALUES ($1,NOW(),NOW()+INTERVAL '6 hours','active')`,
+        [req.user.id]
+      );
+    }
+
+    res.json({
+      ok: true,
+      product
+    });
+  } catch (e) {
+    console.error("Feature payment verification error:", e.message);
+    res.status(500).json({
+      error: "Unable to verify payment"
+    });
+  }
+});
 app.post("/api/payments/verify",auth,async(req,res)=>{const {orderId,paymentId,signature}=req.body;if(!process.env.RAZORPAY_KEY_SECRET)return res.status(503).json({error:"Payments not configured"});const expected=crypto.createHmac('sha256',process.env.RAZORPAY_KEY_SECRET).update(orderId+'|'+paymentId).digest('hex');if(!signature||signature.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))return res.status(400).json({error:'Invalid payment signature'});const sub=await q("UPDATE subscriptions SET payment_id=$1,status='paid' WHERE user_id=$2 AND order_id=$3 AND status<>'paid' RETURNING product",[paymentId,req.user.id,orderId]);if(!sub.rowCount)return res.status(409).json({error:'Payment already processed or order not found'});if(sub.rows[0].product==='call_pass'){const days=Number(process.env.CALL_PASS_DAYS||7);await q("UPDATE users SET call_pass_until=GREATEST(COALESCE(call_pass_until,NOW()),NOW())+($1::int * INTERVAL '1 day') WHERE id=$2",[days,req.user.id])}else await q("UPDATE users SET vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+INTERVAL '30 days' WHERE id=$1",[req.user.id]);res.json({ok:true})});
 
 // Admin
