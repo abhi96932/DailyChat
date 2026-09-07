@@ -234,13 +234,11 @@ async function createCommunityEvent(){
     user?.vip_until &&
     new Date(user.vip_until) > new Date();
 
-  if(!activeGroup){
-    groups = await api('/api/groups');
-    const joined = groups.find(g => g.joined);
-    if(joined) activeGroup = joined;
-  }
+  groups = await api('/api/groups');
 
-  if(!activeGroup){
+  const joinedGroups = groups.filter(g => g.joined);
+
+  if(!joinedGroups.length){
     toast('Join a community first.');
     return render('groups');
   }
@@ -253,19 +251,19 @@ async function createCommunityEvent(){
   modal.className = 'modalOverlay';
 
   modal.style.cssText = `
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(15, 23, 42, 0.68);
-    backdrop-filter: blur(10px);
+    position:fixed;
+    inset:0;
+    z-index:99999;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    background:rgba(15,23,42,.72);
+    backdrop-filter:blur(12px);
   `;
 
   modal.innerHTML = `
-     <div class="card" style="
+    <div class="card" style="
       width:min(560px,94vw);
       max-height:90vh;
       overflow-y:auto;
@@ -274,104 +272,116 @@ async function createCommunityEvent(){
       background:rgba(255,255,255,.97);
       box-shadow:0 30px 80px rgba(0,0,0,.28);
     ">
-      <style>
-  #createEventModal label{
-    display:block;
-    margin:18px 0 7px;
-    font-size:13px;
-    font-weight:700;
-    color:#334155;
-  }
 
-  #createEventModal .input{
-    width:100%;
-    box-sizing:border-box;
-    padding:13px 15px;
-    border:1px solid #dbe3ef;
-    border-radius:14px;
-    background:#f8fafc;
-    font-size:14px;
-    outline:none;
-  }
+      <div style="
+        display:flex;
+        align-items:center;
+        gap:14px;
+        margin-bottom:20px;
+      ">
+        <div style="
+          width:52px;
+          height:52px;
+          border-radius:16px;
+          display:grid;
+          place-items:center;
+          background:linear-gradient(135deg,#35b9ff,#8b5cf6,#ec4899);
+          font-size:25px;
+        ">✨</div>
 
-  #createEventModal textarea.input{
-    min-height:105px;
-    resize:vertical;
-  }
+        <div>
+          <div class="eyebrow">
+            ${vipActive ? 'VIP COMMUNITY EVENT' : 'COMMUNITY EVENT · ₹29'}
+          </div>
+          <div class="muted" style="font-size:13px">
+            Create an event inside your community
+          </div>
+        </div>
+      </div>
 
-  #createEventModal .actions{
-    display:flex;
-    gap:12px;
-  }
+      <h2 style="margin-bottom:8px">Create an event</h2>
 
-  #createEventModal .actions button{
-    flex:1;
-    min-height:48px;
-    border-radius:14px;
-    font-weight:700;
-  }
-</style>
+      <p class="muted" style="margin-bottom:24px">
+        Bring your community together and create your next memorable vibe.
+      </p>
 
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-  <div style="
-    width:46px;
-    height:46px;
-    border-radius:15px;
-    display:grid;
-    place-items:center;
-    background:linear-gradient(135deg,#38bdf8,#c026d3);
-    color:white;
-    font-size:22px;
-    box-shadow:0 8px 20px rgba(124,58,237,.22);
-  ">✨</div>
+      <label>Choose community</label>
 
-  <div>
-    <div class="eyebrow" style="margin:0">
-      ${vipActive ? 'VIP COMMUNITY EVENT' : 'COMMUNITY EVENT • ₹29'}
-    </div>
-    <div style="font-size:12px;color:#64748b;margin-top:3px">
-      ${esc(activeGroup.name || 'Your community')}
-    </div>
-  </div>
-</div>
-
-<h2 style="font-size:28px;margin:12px 0 8px">Create an event</h2>
-
-<p class="muted" style="margin-bottom:22px">
-  Bring your community together and create your next memorable vibe.
-</p>
+      <select id="eventCommunity" class="input">
+        ${joinedGroups.map(g => `
+          <option value="${g.id}">
+            ${esc(g.name)}
+          </option>
+        `).join('')}
+      </select>
 
       <label>Event name</label>
-      <input id="eventTitle" class="input"
-        placeholder="e.g. Weekend Coding Meetup">
+      <input
+        id="eventTitle"
+        class="input"
+        placeholder="e.g. Weekend Coding Meetup"
+      >
 
       <label>Description</label>
-      <textarea id="eventDescription" class="input" rows="4"
-        placeholder="Tell people what this event is about"></textarea>
+      <textarea
+        id="eventDescription"
+        class="input"
+        rows="4"
+        placeholder="Tell people what this event is about"
+      ></textarea>
 
       <label>Location</label>
-      <input id="eventLocation" class="input"
-        placeholder="Location or Online" value="Online">
+      <input
+        id="eventLocation"
+        class="input"
+        placeholder="Location or Online"
+        value="Online"
+      >
 
       <label>Date & time</label>
-      <input id="eventDate" class="input" type="datetime-local">
+      <input
+        id="eventDate"
+        class="input"
+        type="datetime-local"
+      >
 
-      <div class="actions" style="margin-top:18px">
-        <button class="secondary"
-          onclick="document.getElementById('createEventModal')?.remove()">
+      <div class="actions" style="
+        margin-top:22px;
+        display:flex;
+        gap:12px;
+      ">
+
+        <button
+          class="secondary"
+          style="flex:1"
+          onclick="document.getElementById('createEventModal')?.remove()"
+        >
           Cancel
         </button>
 
-        <button class="primary" id="saveEventBtn">
+        <button
+          class="primary"
+          id="saveEventBtn"
+          style="flex:1"
+        >
           ${vipActive ? '✨ Create Event' : '✨ Pay ₹29 & Create Event'}
         </button>
+
       </div>
+
     </div>
   `;
 
   document.body.appendChild(modal);
 
   document.getElementById('saveEventBtn').onclick = async () => {
+
+    const groupId =
+      Number(document.getElementById('eventCommunity').value);
+
+    const selectedGroup =
+      joinedGroups.find(g => Number(g.id) === groupId);
+
     const title =
       document.getElementById('eventTitle').value.trim();
 
@@ -384,85 +394,23 @@ async function createCommunityEvent(){
     const when =
       document.getElementById('eventDate').value;
 
-    if(!title) return toast('Enter an event name.');
-    if(!when) return toast('Choose a date and time.');
+    if(!selectedGroup)
+      return toast('Choose a community.');
+
+    if(!title)
+      return toast('Enter an event name.');
+
+    if(!when)
+      return toast('Choose a date and time.');
 
     const dt = new Date(when);
 
-    if(Number.isNaN(dt.getTime())){
+    if(Number.isNaN(dt.getTime()))
       return toast('Invalid date/time.');
-    }
 
     try{
-      // Free users pay ₹29 first
-      if(!vipActive){
-        const o = await api('/api/features/order',{
-          method:'POST',
-          body:{product:'event_create'}
-        });
 
-        await loadRazorpay();
-
-        const checkout = new Razorpay({
-          key:o.keyId,
-          amount:o.amount,
-          currency:'INR',
-          name:'VibeMeet',
-          description:'VibeMeet Event Creation · ₹29',
-          order_id:o.orderId,
-
-          prefill:{
-            name:user?.name || '',
-            email:user?.email || ''
-          },
-
-          theme:{
-            color:'#6b4ce6'
-          },
-
-          modal:{
-            ondismiss:()=>{
-              toast('Payment cancelled');
-            }
-          },
-
-          handler:async r=>{
-            try{
-              await api('/api/features/verify',{
-                method:'POST',
-                body:{
-                  orderId:r.razorpay_order_id,
-                  paymentId:r.razorpay_payment_id,
-                  signature:r.razorpay_signature
-                }
-              });
-
-              await api(`/api/groups/${activeGroup.id}/events`,{
-                method:'POST',
-                body:{
-                  title,
-                  description,
-                  location,
-                  startsAt:dt.toISOString()
-                }
-              });
-
-              modal.remove();
-              toast('📅 Event created successfully!');
-              render('events');
-
-            }catch(e){
-              toast(e.message);
-            }
-          }
-        });
-
-        checkout.open();
-        return;
-      }
-
-      // VIP users create directly
-      await api(`/api/groups/${activeGroup.id}/events`,{
+      await api(`/api/groups/${selectedGroup.id}/events`,{
         method:'POST',
         body:{
           title,
@@ -472,8 +420,12 @@ async function createCommunityEvent(){
         }
       });
 
+      activeGroup = selectedGroup;
+
       modal.remove();
+
       toast('📅 Event created successfully!');
+
       render('events');
 
     }catch(e){
