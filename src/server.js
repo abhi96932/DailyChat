@@ -147,27 +147,85 @@ app.patch("/api/me",auth,async(req,res)=>{const allowedGender=["male","female","
 // Communities and events
 app.post("/api/groups", auth, async(req,res)=>{
   try{
-    const {name, description} = req.body;
+    const {name,description}=req.body;
 
     if(!name || !name.trim()){
       return res.status(400).json({error:"Community name is required"});
     }
 
-    const group = await q(
-      `INSERT INTO groups(name,description,created_by)
-       VALUES($1,$2,$3)
-       RETURNING *`,
-      [name.trim(), description?.trim() || "", req.user.id]
+    // Check VIP status
+    const vip=await q(
+      `SELECT vip_until FROM users WHERE id=$1`,
+      [req.user.id]
     );
 
-    await q(
-      `INSERT INTO group_members(group_id,user_id)
-       VALUES($1,$2)
-       ON CONFLICT DO NOTHING`,
-      [group.rows[0].id, req.user.id]
-    );
+    const isVip=
+      vip.rows[0]?.vip_until &&
+      new Date(vip.rows[0].vip_until)>new Date();
 
-    res.json(group.rows[0]);
+    // Non-VIP users need one paid community creation
+    let purchaseId=null;
+
+    if(!isVip){
+      const purchase=await q(
+        `UPDATE feature_purchases
+         SET status='used'
+         WHERE id=(
+           SELECT id
+           FROM feature_purchases
+           WHERE user_id=$1
+             AND product='community_create'
+             AND status='paid'
+           ORDER BY id ASC
+           LIMIT 1
+         )
+         RETURNING id`,
+        [req.user.id]
+      );
+
+      if(!purchase.rowCount){
+        return res.status(402).json({
+          error:"₹29 payment is required to create a community."
+        });
+      }
+
+      purchaseId=purchase.rows[0].id;
+    }
+
+    try{
+      const group=await q(
+        `INSERT INTO groups(name,description,created_by)
+         VALUES($1,$2,$3)
+         RETURNING *`,
+        [
+          name.trim(),
+          description?.trim() || "",
+          req.user.id
+        ]
+      );
+
+      await q(
+        `INSERT INTO group_members(group_id,user_id)
+         VALUES($1,$2)
+         ON CONFLICT DO NOTHING`,
+        [group.rows[0].id,req.user.id]
+      );
+
+      res.json(group.rows[0]);
+
+    }catch(e){
+      // If community creation failed, restore the paid purchase
+      if(purchaseId){
+        await q(
+          `UPDATE feature_purchases
+           SET status='paid'
+           WHERE id=$1`,
+          [purchaseId]
+        );
+      }
+      throw e;
+    }
+
   }catch(e){
     console.error("Create community error:",e.message);
     res.status(500).json({error:"Unable to create community"});
