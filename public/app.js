@@ -252,6 +252,18 @@ async function createCommunityEvent(){
   modal.id = 'createEventModal';
   modal.className = 'modalOverlay';
 
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.68);
+    backdrop-filter: blur(10px);
+  `;
+
   modal.innerHTML = `
     <div class="card" style="max-width:560px;width:92%;padding:24px">
       <div class="eyebrow">${vipActive ? 'VIP COMMUNITY EVENT ✨' : 'COMMUNITY EVENT · ₹29'}</div>
