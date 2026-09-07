@@ -1,4 +1,771 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VibeMeet — Date. Connect. Belong.</title><link rel="icon" href="/logo.svg"><link rel="stylesheet" href="/style.css"></head><body>
-<div id="auth" class="auth"><div class="authbox"><div class="brand"><span>💜</span><b>VibeMeet</b></div><h1 id="authTitle">Find your people.</h1><p>Dating, friendship and communities — in one place.</p><form id="form"><input id="name" placeholder="Name"><input id="email" type="email" placeholder="Email" required><input id="password" type="password" placeholder="Password" minlength="8" required><div id="profileFields"><div class="twocol"><label>Age<input id="age" type="number" min="18" max="100" placeholder="18+"></label><label>City<input id="city" placeholder="Your city"></label></div><div class="twocol"><label>Gender<select id="gender"><option value="prefer_not_to_say">Prefer not to say</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label><label>Mode<select id="mode"><option value="dating">❤️ Dating</option><option value="friendship">🤝 Friendship</option><option value="community">👥 Community</option></select></label></div><label>Match preference<select id="matchPreference"><option value="any">Any gender</option><option value="same">Same gender</option><option value="opposite">Opposite gender</option></select></label></div><button class="primary">Create account</button></form><button class="secondary full" id="guestBtn">Continue as Guest</button><button class="link" id="switch">Already have an account? Login</button><small id="authMsg"></small></div></div>
-<div id="app" class="hidden"><aside><div class="brand sidebrand"><span>💜</span><b>VibeMeet</b></div><div class="navlabel">DISCOVER</div><button data-page="home">✨ Discover</button><button data-page="matches">💞 Matches</button><button data-page="groups">👥 Groups</button><button data-page="events">📅 Events</button><div class="navlabel">CONNECT</div><button data-page="messages">💬 Messages</button><button data-page="people">🌐 People</button><button data-page="calls">📞 Calls</button><div class="navlabel">YOU</div><button data-page="profile">👤 Profile</button><button data-page="compatibility">🧩 Compatibility</button><button data-page="vip">♛ VIP</button><button data-page="admin" id="adminNav" class="hidden">⚙ Admin</button><button id="logout" class="logout">Log out</button></aside><main><header><button id="hamb">☰</button><input id="search" placeholder="Search people, groups or events..."><span id="me"></span></header><section id="page"></section></main></div>
-<script src="/socket.io/socket.io.js"></script><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VibeMeet — Find Your Vibe</title>
+<link rel="icon" href="/logo.svg">
+<link rel="stylesheet" href="/style.css">
+
+<style>
+/* ===== VibeMeet Professional Opening ===== */
+
+:root{
+  --vm-purple:#6d5dfc;
+  --vm-pink:#ff4f9a;
+  --vm-blue:#4f8cff;
+  --vm-dark:#101124;
+  --vm-muted:#73758a;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#f7f7fb;
+}
+
+/* Landing */
+.vm-landing{
+  min-height:100vh;
+  overflow:hidden;
+  position:relative;
+  background:
+    radial-gradient(circle at 10% 10%,rgba(109,93,252,.20),transparent 30%),
+    radial-gradient(circle at 90% 15%,rgba(255,79,154,.17),transparent 30%),
+    radial-gradient(circle at 50% 100%,rgba(79,140,255,.14),transparent 35%),
+    #fafaff;
+}
+
+.vm-nav{
+  height:76px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  max-width:1180px;
+  margin:auto;
+  padding:0 24px;
+}
+
+.vm-logo{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:22px;
+  color:#17182a;
+}
+
+.vm-logo-icon{
+  width:40px;
+  height:40px;
+  display:grid;
+  place-items:center;
+  border-radius:14px;
+  background:linear-gradient(135deg,var(--vm-purple),var(--vm-pink));
+  color:white;
+  box-shadow:0 10px 30px rgba(109,93,252,.25);
+}
+
+.vm-login{
+  border:0;
+  background:white;
+  padding:11px 20px;
+  border-radius:999px;
+  font-weight:700;
+  cursor:pointer;
+  box-shadow:0 8px 25px rgba(30,30,70,.08);
+}
+
+.vm-hero{
+  max-width:1180px;
+  margin:auto;
+  min-height:calc(100vh - 76px);
+  padding:55px 24px 70px;
+  display:grid;
+  grid-template-columns:1.05fr .95fr;
+  align-items:center;
+  gap:50px;
+}
+
+.vm-eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 14px;
+  border-radius:999px;
+  background:rgba(109,93,252,.09);
+  color:#6555df;
+  font-weight:800;
+  font-size:13px;
+}
+
+.vm-title{
+  margin:20px 0 18px;
+  font-size:clamp(48px,6vw,78px);
+  line-height:.98;
+  letter-spacing:-4px;
+  color:var(--vm-dark);
+}
+
+.vm-title span{
+  background:linear-gradient(90deg,var(--vm-purple),var(--vm-pink));
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+.vm-subtitle{
+  max-width:570px;
+  color:#65677b;
+  font-size:19px;
+  line-height:1.65;
+}
+
+.vm-actions{
+  display:flex;
+  gap:13px;
+  flex-wrap:wrap;
+  margin-top:30px;
+}
+
+.vm-primary{
+  border:0;
+  cursor:pointer;
+  color:white;
+  font-size:16px;
+  font-weight:800;
+  padding:15px 24px;
+  border-radius:16px;
+  background:linear-gradient(135deg,var(--vm-purple),var(--vm-pink));
+  box-shadow:0 15px 35px rgba(109,93,252,.28);
+  transition:.2s;
+}
+
+.vm-primary:hover{
+  transform:translateY(-2px);
+}
+
+.vm-secondary{
+  border:1px solid #e3e3ed;
+  background:white;
+  cursor:pointer;
+  font-size:16px;
+  font-weight:750;
+  padding:15px 24px;
+  border-radius:16px;
+}
+
+/* floating profile cards */
+.vm-showcase{
+  position:relative;
+  height:570px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.vm-card{
+  position:absolute;
+  width:280px;
+  height:390px;
+  border-radius:30px;
+  overflow:hidden;
+  background:white;
+  box-shadow:0 30px 70px rgba(40,35,90,.20);
+  transition:.3s;
+}
+
+.vm-card img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.vm-card-main{
+  transform:rotate(3deg);
+  z-index:3;
+}
+
+.vm-card-left{
+  transform:translateX(-125px) rotate(-10deg) scale(.88);
+  z-index:2;
+  opacity:.8;
+}
+
+.vm-card-right{
+  transform:translateX(125px) rotate(11deg) scale(.88);
+  z-index:1;
+  opacity:.72;
+}
+
+.vm-card-info{
+  position:absolute;
+  bottom:0;
+  left:0;
+  right:0;
+  padding:28px 20px 20px;
+  color:white;
+  background:linear-gradient(transparent,rgba(0,0,0,.8));
+}
+
+.vm-card-info strong{
+  font-size:23px;
+}
+
+.vm-card-info small{
+  display:block;
+  margin-top:5px;
+  opacity:.9;
+}
+
+.vm-like{
+  position:absolute;
+  right:18px;
+  bottom:18px;
+  width:50px;
+  height:50px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:white;
+  color:#ff4f9a;
+  font-size:22px;
+  box-shadow:0 10px 25px rgba(0,0,0,.18);
+}
+
+.vm-trust{
+  margin-top:28px;
+  display:flex;
+  gap:20px;
+  flex-wrap:wrap;
+  color:#77798a;
+  font-size:13px;
+  font-weight:650;
+}
+
+.vm-features{
+  max-width:1180px;
+  margin:0 auto;
+  padding:0 24px 70px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:18px;
+}
+
+.vm-feature{
+  background:rgba(255,255,255,.8);
+  border:1px solid #ededf5;
+  border-radius:22px;
+  padding:24px;
+}
+
+.vm-feature-icon{
+  font-size:28px;
+  margin-bottom:12px;
+}
+
+.vm-feature h3{
+  margin:0 0 7px;
+  color:#17182a;
+}
+
+.vm-feature p{
+  margin:0;
+  color:#77798a;
+  line-height:1.55;
+}
+
+/* Auth panel */
+.vm-auth-screen{
+  display:none;
+  min-height:100vh;
+  padding:30px 18px;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 10% 10%,rgba(109,93,252,.18),transparent 32%),
+    radial-gradient(circle at 90% 90%,rgba(255,79,154,.16),transparent 32%),
+    #f8f8fc;
+}
+
+.vm-auth-screen.active{
+  display:flex;
+}
+
+.vm-auth-wrap{
+  width:min(440px,100%);
+}
+
+.vm-back{
+  border:0;
+  background:transparent;
+  color:#686a7b;
+  font-weight:700;
+  cursor:pointer;
+  margin-bottom:15px;
+}
+
+.authbox{
+  width:100%;
+  border-radius:30px;
+  padding:30px;
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 30px 80px rgba(35,30,80,.14);
+}
+
+.authbox .brand{
+  margin-bottom:20px;
+}
+
+.authbox h1{
+  letter-spacing:-1px;
+}
+
+.authbox p{
+  color:#77798a;
+}
+
+/* Mobile */
+@media(max-width:850px){
+  .vm-hero{
+    grid-template-columns:1fr;
+    text-align:center;
+    padding-top:35px;
+  }
+
+  .vm-subtitle{
+    margin-left:auto;
+    margin-right:auto;
+  }
+
+  .vm-actions{
+    justify-content:center;
+  }
+
+  .vm-trust{
+    justify-content:center;
+  }
+
+  .vm-showcase{
+    height:450px;
+    margin-top:-20px;
+  }
+
+  .vm-card{
+    width:235px;
+    height:330px;
+  }
+
+  .vm-card-left{
+    transform:translateX(-90px) rotate(-10deg) scale(.82);
+  }
+
+  .vm-card-right{
+    transform:translateX(90px) rotate(11deg) scale(.82);
+  }
+
+  .vm-features{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:500px){
+  .vm-title{
+    font-size:48px;
+    letter-spacing:-3px;
+  }
+
+  .vm-nav{
+    padding:0 16px;
+  }
+
+  .vm-showcase{
+    height:390px;
+  }
+
+  .vm-card{
+    width:205px;
+    height:290px;
+  }
+
+  .vm-card-left{
+    transform:translateX(-65px) rotate(-9deg) scale(.8);
+  }
+
+  .vm-card-right{
+    transform:translateX(65px) rotate(9deg) scale(.8);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ================= LANDING PAGE ================= -->
+
+<div id="vmLanding" class="vm-landing">
+
+  <nav class="vm-nav">
+    <div class="vm-logo">
+      <div class="vm-logo-icon">💜</div>
+      <b>VibeMeet</b>
+    </div>
+
+    <button class="vm-login" id="vmLoginBtn">
+      Log in
+    </button>
+  </nav>
+
+  <section class="vm-hero">
+
+    <div>
+
+      <div class="vm-eyebrow">
+        ✨ Meet people who match your vibe
+      </div>
+
+      <h1 class="vm-title">
+        Find your<br>
+        <span>people.</span>
+      </h1>
+
+      <p class="vm-subtitle">
+        Dating, friendship and communities — brought together
+        in one place. Discover people who share your interests,
+        personality and vibe.
+      </p>
+
+      <div class="vm-actions">
+        <button class="vm-primary" id="vmStartBtn">
+          Create your VibeMeet
+        </button>
+
+        <button class="vm-secondary" id="vmGuestBtn">
+          Explore as Guest
+        </button>
+      </div>
+
+      <div class="vm-trust">
+        <span>💞 Meaningful matches</span>
+        <span>👥 Communities</span>
+        <span>🔒 Privacy focused</span>
+      </div>
+
+    </div>
+
+    <div class="vm-showcase">
+
+      <div class="vm-card vm-card-left">
+        <img
+          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=700&q=85"
+          alt="VibeMeet profile">
+      </div>
+
+      <div class="vm-card vm-card-right">
+        <img
+          src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=700&q=85"
+          alt="VibeMeet profile">
+      </div>
+
+      <div class="vm-card vm-card-main">
+
+        <img
+          src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=700&q=85"
+          alt="VibeMeet profile">
+
+        <div class="vm-card-info">
+          <strong>Someone like you ✨</strong>
+          <small>92% vibe match · 6 shared interests</small>
+        </div>
+
+        <div class="vm-like">♥</div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+  <section class="vm-features">
+
+    <div class="vm-feature">
+      <div class="vm-feature-icon">💞</div>
+      <h3>Match by vibe</h3>
+      <p>
+        Discover people based on interests, compatibility,
+        communities and what you are actually looking for.
+      </p>
+    </div>
+
+    <div class="vm-feature">
+      <div class="vm-feature-icon">👥</div>
+      <h3>Communities first</h3>
+      <p>
+        Join communities around college, coding, travel,
+        gaming, fitness, music and more.
+      </p>
+    </div>
+
+    <div class="vm-feature">
+      <div class="vm-feature-icon">💬</div>
+      <h3>Connect naturally</h3>
+      <p>
+        Match, chat, share photos and build real connections
+        instead of endlessly scrolling.
+      </p>
+    </div>
+
+  </section>
+
+</div>
+
+
+<!-- ================= AUTH ================= -->
+
+<div id="auth" class="vm-auth-screen">
+
+  <div class="vm-auth-wrap">
+
+    <button class="vm-back" id="vmBackBtn">
+      ← Back to VibeMeet
+    </button>
+
+    <div class="authbox">
+
+      <div class="brand">
+        <span>💜</span>
+        <b>VibeMeet</b>
+      </div>
+
+      <h1 id="authTitle">Find your people.</h1>
+
+      <p>
+        Create your profile and start discovering people
+        who match your vibe.
+      </p>
+
+      <form id="form">
+
+        <input id="name" placeholder="Your name">
+
+        <input
+          id="email"
+          type="email"
+          placeholder="Email address"
+          required
+        >
+
+        <input
+          id="password"
+          type="password"
+          placeholder="Password"
+          minlength="8"
+          required
+        >
+
+        <div id="profileFields">
+
+          <div class="twocol">
+
+            <label>
+              Age
+              <input
+                id="age"
+                type="number"
+                min="18"
+                max="100"
+                placeholder="18+"
+              >
+            </label>
+
+            <label>
+              City
+              <input
+                id="city"
+                placeholder="Your city"
+              >
+            </label>
+
+          </div>
+
+          <div class="twocol">
+
+            <label>
+              Gender
+
+              <select id="gender">
+                <option value="prefer_not_to_say">
+                  Prefer not to say
+                </option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+
+            </label>
+
+            <label>
+              Mode
+
+              <select id="mode">
+                <option value="dating">❤️ Dating</option>
+                <option value="friendship">🤝 Friendship</option>
+                <option value="community">👥 Community</option>
+              </select>
+
+            </label>
+
+          </div>
+
+          <label>
+            Match preference
+
+            <select id="matchPreference">
+              <option value="any">Any gender</option>
+              <option value="same">Same gender</option>
+              <option value="opposite">Opposite gender</option>
+            </select>
+
+          </label>
+
+        </div>
+
+        <button class="primary">
+          Create account
+        </button>
+
+      </form>
+
+      <button class="secondary full" id="guestBtn">
+        Continue as Guest
+      </button>
+
+      <button class="link" id="switch">
+        Already have an account? Login
+      </button>
+
+      <small id="authMsg"></small>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- ================= EXISTING APP ================= -->
+
+<div id="app" class="hidden">
+
+  <aside>
+
+    <div class="brand sidebrand">
+      <span>💜</span>
+      <b>VibeMeet</b>
+    </div>
+
+    <div class="navlabel">DISCOVER</div>
+
+    <button data-page="home">✨ Discover</button>
+    <button data-page="matches">💞 Matches</button>
+    <button data-page="groups">👥 Groups</button>
+    <button data-page="events">📅 Events</button>
+
+    <div class="navlabel">CONNECT</div>
+
+    <button data-page="messages">💬 Messages</button>
+    <button data-page="people">🌐 People</button>
+    <button data-page="calls">📞 Calls</button>
+
+    <div class="navlabel">YOU</div>
+
+    <button data-page="profile">👤 Profile</button>
+    <button data-page="compatibility">🧩 Compatibility</button>
+    <button data-page="vip">♛ VIP</button>
+
+    <button data-page="admin" id="adminNav" class="hidden">
+      ⚙ Admin
+    </button>
+
+    <button id="logout" class="logout">
+      Log out
+    </button>
+
+  </aside>
+
+  <main>
+
+    <header>
+
+      <button id="hamb">☰</button>
+
+      <input
+        id="search"
+        placeholder="Search people, groups or events..."
+      >
+
+      <span id="me"></span>
+
+    </header>
+
+    <section id="page"></section>
+
+  </main>
+
+</div>
+
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+
+<script>
+/*
+  Landing-page controls.
+  Existing app.js remains responsible for authentication,
+  registration, guest login and the actual VibeMeet application.
+*/
+
+(function(){
+
+  const landing = document.getElementById('vmLanding');
+  const auth = document.getElementById('auth');
+
+  const start = document.getElementById('vmStartBtn');
+  const login = document.getElementById('vmLoginBtn');
+  const guest = document.getElementById('vmGuestBtn');
+  const back = document.getElementById('vmBackBtn');
+
+  function openAuth(){
+    landing.style.display = 'none';
+    auth.classList.add('active');
+    window.scrollTo(0,0);
+  }
+
+  function backToLanding(){
+    auth.classList.remove('active');
+    landing.style.display = '';
+    window.scrollTo(0,0);
+  }
+
+  start?.addEventListener('click',openAuth);
+  login?.addEventListener('click',openAuth);
+  back?.addEventListener('click',backToLanding);
+
+  /*
+    Guest button on landing uses the existing guest button.
+  */
+  guest?.addEventListener('click',function(){
+    openAuth();
+
+    setTimeout(function(){
+      document.getElementById('guestBtn')?.click();
+    },100);
+  });
+
+})();
+</script>
+
+</body>
+</html>
