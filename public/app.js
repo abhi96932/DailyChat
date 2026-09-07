@@ -312,11 +312,34 @@ async function createCommunityEvent(){
   }
 </style>
 
-      <div class="eyebrow">${vipActive ? 'VIP COMMUNITY EVENT ✨' : 'COMMUNITY EVENT · ₹29'}</div>
-      <h2>Create an event</h2>
-      <p class="muted">
-        Create a memorable meetup for ${esc(activeGroup.name || 'your community')}.
-      </p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+  <div style="
+    width:46px;
+    height:46px;
+    border-radius:15px;
+    display:grid;
+    place-items:center;
+    background:linear-gradient(135deg,#38bdf8,#c026d3);
+    color:white;
+    font-size:22px;
+    box-shadow:0 8px 20px rgba(124,58,237,.22);
+  ">✨</div>
+
+  <div>
+    <div class="eyebrow" style="margin:0">
+      ${vipActive ? 'VIP COMMUNITY EVENT' : 'COMMUNITY EVENT • ₹29'}
+    </div>
+    <div style="font-size:12px;color:#64748b;margin-top:3px">
+      ${esc(activeGroup.name || 'Your community')}
+    </div>
+  </div>
+</div>
+
+<h2 style="font-size:28px;margin:12px 0 8px">Create an event</h2>
+
+<p class="muted" style="margin-bottom:22px">
+  Bring your community together and create your next memorable vibe.
+</p>
 
       <label>Event name</label>
       <input id="eventTitle" class="input"
