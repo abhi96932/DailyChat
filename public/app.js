@@ -265,7 +265,53 @@ async function createCommunityEvent(){
   `;
 
   modal.innerHTML = `
-    <div class="card" style="max-width:560px;width:92%;padding:24px">
+     <div class="card" style="
+      width:min(560px,94vw);
+      max-height:90vh;
+      overflow-y:auto;
+      padding:30px;
+      border-radius:28px;
+      background:rgba(255,255,255,.97);
+      box-shadow:0 30px 80px rgba(0,0,0,.28);
+    ">
+      <style>
+  #createEventModal label{
+    display:block;
+    margin:18px 0 7px;
+    font-size:13px;
+    font-weight:700;
+    color:#334155;
+  }
+
+  #createEventModal .input{
+    width:100%;
+    box-sizing:border-box;
+    padding:13px 15px;
+    border:1px solid #dbe3ef;
+    border-radius:14px;
+    background:#f8fafc;
+    font-size:14px;
+    outline:none;
+  }
+
+  #createEventModal textarea.input{
+    min-height:105px;
+    resize:vertical;
+  }
+
+  #createEventModal .actions{
+    display:flex;
+    gap:12px;
+  }
+
+  #createEventModal .actions button{
+    flex:1;
+    min-height:48px;
+    border-radius:14px;
+    font-weight:700;
+  }
+</style>
+
       <div class="eyebrow">${vipActive ? 'VIP COMMUNITY EVENT ✨' : 'COMMUNITY EVENT · ₹29'}</div>
       <h2>Create an event</h2>
       <p class="muted">
