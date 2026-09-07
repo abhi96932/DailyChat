@@ -408,29 +408,80 @@ async function createCommunityEvent(){
     if(Number.isNaN(dt.getTime()))
       return toast('Invalid date/time.');
 
-    try{
+   try {
+    // 1. Create ₹29 payment order
+    const order = await api('/api/features/order', {
+      method: 'POST',
+      body: {
+        product: 'event_create'
+      }
+    });
 
-      await api(`/api/groups/${selectedGroup.id}/events`,{
-        method:'POST',
-        body:{
-          title,
-          description,
-          location,
-          startsAt:dt.toISOString()
+    // 2. Load Razorpay
+    await loadRazorpay();
+
+    // 3. Open Razorpay checkout
+    await new Promise((resolve, reject) => {
+    const checkout = new Razorpay({
+      key: order.keyId,
+      amount: order.amount,
+      currency: 'INR',
+      name: 'VibeMeet',
+      description: 'Create Community Event · ₹29',
+
+      prefill: {
+        name: user?.name || '',
+        email: user?.email || ''
+      },
+
+      theme: {
+        color: '#6b4ce6'
+      },
+
+      modal: {
+        ondismiss: () => reject(new Error('Payment cancelled'))
+      },
+
+      handler: async payment => {
+        try {
+          // 4. Verify payment
+          await api('/api/features/verify', {
+            method: 'POST',
+            body: {
+              orderId: payment.razorpay_order_id,
+              paymentId: payment.razorpay_payment_id,
+              signature: payment.razorpay_signature
+            }
+          });
+
+          resolve();
+        } catch (e) {
+          reject(e);
         }
-      });
+      }
+    });
 
-      activeGroup = selectedGroup;
+    checkout.open();
+  });
 
-      modal.remove();
+  // 5. Payment successful → create event
+    await api(`/api/groups/${selectedGroup.id}/events`, {
+      method: 'POST',
+      body: {
+        title,
+        description,
+        location,
+        startsAt: dt.toISOString()
+      }
+    });
 
-      toast('📅 Event created successfully!');
+    modal.remove();
+    toast('📅 Event created successfully!');
+    render('events');
 
-      render('events');
-
-    }catch(e){
-      toast(e.message);
-    }
+  } catch (e) {
+    toast(e.message);
+  }
   };
 }
 
