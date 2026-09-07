@@ -152,6 +152,27 @@ async function createCommunity(){
 
     const description = prompt("Community description") || "";
 
+    // Try to create using an already-paid ₹29 purchase first
+    try{
+      await api("/api/groups",{
+        method:"POST",
+        body:{
+          name:name.trim(),
+          description:description.trim()
+        }
+      });
+
+      toast("🎉 Community created successfully!");
+      render("groups");
+      return;
+    }catch(e){
+      // No unused payment → continue to payment
+      if(!String(e.message || "").includes("₹29")){
+        throw e;
+      }
+    }
+
+    // No paid purchase available → open ₹29 payment
     const o = await api("/api/features/order",{
       method:"POST",
       body:{product:"community_create"}
@@ -167,8 +188,8 @@ async function createCommunity(){
       description:"VibeMeet Community Creation · ₹29",
       order_id:o.orderId,
       prefill:{
-        name:user?.name||"",
-        email:user?.email||""
+        name:user?.name || "",
+        email:user?.email || ""
       },
       theme:{color:"#6b4ce6"},
       modal:{
@@ -202,6 +223,7 @@ async function createCommunity(){
     });
 
     checkout.open();
+
   }catch(e){
     toast(e.message);
   }
