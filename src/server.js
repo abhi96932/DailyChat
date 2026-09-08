@@ -362,7 +362,7 @@ app.get("/api/likes",auth,async(req,res)=>{
 
   const visibleCount = vipActive
     ? incomingRows.length
-    : Math.min(incomingRows.length, 1 + paidExtraLikes);
+    : Math.min(incomingRows.length, paidExtraLikes);
 
   res.json({
     incoming: incomingRows.slice(0, visibleCount),
