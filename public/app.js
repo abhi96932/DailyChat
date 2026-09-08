@@ -245,136 +245,413 @@ async function createCommunityEvent(){
     return render('groups');
   }
 
-  const old = document.getElementById('createEventModal');
-  if(old) old.remove();
+  document.getElementById('createEventModal')?.remove();
 
   const modal = document.createElement('div');
   modal.id = 'createEventModal';
-  modal.className = 'modalOverlay';
-
-  modal.style.cssText = `
-    position:fixed;
-    inset:0;
-    z-index:99999;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:20px;
-    background:rgba(15,23,42,.72);
-    backdrop-filter:blur(12px);
-  `;
 
   modal.innerHTML = `
-    <div class="card" style="
-      width:min(560px,94vw);
-      max-height:90vh;
-      overflow-y:auto;
-      padding:30px;
-      border-radius:28px;
-      background:rgba(255,255,255,.97);
-      box-shadow:0 30px 80px rgba(0,0,0,.28);
-    ">
+    <div class="eventCreateBackdrop">
+      <div class="eventCreateCard">
 
-      <div style="
-        display:flex;
-        align-items:center;
-        gap:14px;
-        margin-bottom:20px;
-      ">
-        <div style="
-          width:52px;
-          height:52px;
-          border-radius:16px;
-          display:grid;
-          place-items:center;
-          background:linear-gradient(135deg,#35b9ff,#8b5cf6,#ec4899);
-          font-size:25px;
-        ">✨</div>
+        <div class="eventCreateHeader">
+          <div class="eventCreateIcon">📅</div>
 
-        <div>
-          <div class="eyebrow">
-            ${vipActive ? 'VIP COMMUNITY EVENT' : 'COMMUNITY EVENT · ₹29'}
+          <div class="eventCreateHeaderText">
+            <div class="eventCreateEyebrow">
+              ${vipActive ? '💎 VIP EVENT CREATOR' : '✨ COMMUNITY EVENT'}
+            </div>
+
+            <h2>Create an event</h2>
+
+            <p>
+              Bring your community together with something worth showing up for.
+            </p>
           </div>
-          <div class="muted" style="font-size:13px">
-            Create an event inside your community
+
+          <button
+            class="eventCreateClose"
+            onclick="document.getElementById('createEventModal')?.remove()"
+          >×</button>
+        </div>
+
+        <div class="eventCreateStep">
+          <span>1</span>
+          <div>
+            <b>Choose your community</b>
+            <small>Select where this event will happen</small>
           </div>
         </div>
-      </div>
 
-      <h2 style="margin-bottom:8px">Create an event</h2>
+        <select id="eventCommunity" class="eventCreateInput">
+          ${joinedGroups.map(g => `
+            <option value="${g.id}">
+              ${esc(g.name)}
+            </option>
+          `).join('')}
+        </select>
 
-      <p class="muted" style="margin-bottom:24px">
-        Bring your community together and create your next memorable vibe.
-      </p>
+        <div class="eventCreateStep">
+          <span>2</span>
+          <div>
+            <b>Event details</b>
+            <small>Tell people what you're planning</small>
+          </div>
+        </div>
 
-      <label>Choose community</label>
-
-      <select id="eventCommunity" class="input">
-        ${joinedGroups.map(g => `
-          <option value="${g.id}">
-            ${esc(g.name)}
-          </option>
-        `).join('')}
-      </select>
-
-      <label>Event name</label>
-      <input
-        id="eventTitle"
-        class="input"
-        placeholder="e.g. Weekend Coding Meetup"
-      >
-
-      <label>Description</label>
-      <textarea
-        id="eventDescription"
-        class="input"
-        rows="4"
-        placeholder="Tell people what this event is about"
-      ></textarea>
-
-      <label>Location</label>
-      <input
-        id="eventLocation"
-        class="input"
-        placeholder="Location or Online"
-        value="Online"
-      >
-
-      <label>Date & time</label>
-      <input
-        id="eventDate"
-        class="input"
-        type="datetime-local"
-      >
-
-      <div class="actions" style="
-        margin-top:22px;
-        display:flex;
-        gap:12px;
-      ">
-
-        <button
-          class="secondary"
-          style="flex:1"
-          onclick="document.getElementById('createEventModal')?.remove()"
+        <label class="eventCreateLabel">Event name</label>
+        <input
+          id="eventTitle"
+          class="eventCreateInput"
+          placeholder="e.g. Weekend Coding Meetup"
+          maxlength="100"
         >
-          Cancel
-        </button>
 
-        <button
-          class="primary"
-          id="saveEventBtn"
-          style="flex:1"
-        >
-          ${vipActive ? '✨ Create Event' : '✨ Pay ₹29 & Create Event'}
-        </button>
+        <label class="eventCreateLabel">Description</label>
+        <textarea
+          id="eventDescription"
+          class="eventCreateInput eventCreateTextarea"
+          rows="4"
+          placeholder="What's happening? Tell your community..."
+          maxlength="500"
+        ></textarea>
+
+        <div class="eventCreateGrid">
+
+          <div>
+            <label class="eventCreateLabel">📍 Location</label>
+            <input
+              id="eventLocation"
+              class="eventCreateInput"
+              placeholder="Online or venue"
+              value="Online"
+            >
+          </div>
+
+          <div>
+            <label class="eventCreateLabel">🕐 Date & time</label>
+            <input
+              id="eventDate"
+              class="eventCreateInput"
+              type="datetime-local"
+            >
+          </div>
+
+        </div>
+
+        <div class="eventCreatePrice">
+          <div>
+            <span class="eventCreatePriceIcon">
+              ${vipActive ? '💎' : '✨'}
+            </span>
+
+            <div>
+              <b>
+                ${vipActive ? 'VIP benefit' : 'Event creation'}
+              </b>
+
+              <small>
+                ${vipActive
+                  ? 'Included with your VIP membership'
+                  : 'One-time community event creation'}
+              </small>
+            </div>
+          </div>
+
+          <strong>
+            ${vipActive ? 'FREE' : '₹29'}
+          </strong>
+        </div>
+
+        <div class="eventCreateActions">
+
+          <button
+            class="eventCancelBtn"
+            onclick="document.getElementById('createEventModal')?.remove()"
+          >
+            Cancel
+          </button>
+
+          <button
+            class="eventCreateBtn"
+            id="saveEventBtn"
+          >
+            ${vipActive
+              ? '💎 Create Event'
+              : '✨ Pay ₹29 & Create'}
+          </button>
+
+        </div>
+
+        <div class="eventCreateSecure">
+          🔒 Secure payment powered by Razorpay
+        </div>
 
       </div>
-
     </div>
   `;
 
   document.body.appendChild(modal);
+
+  if(!document.getElementById('eventCreateStyles')){
+    const style = document.createElement('style');
+    style.id = 'eventCreateStyles';
+
+    style.textContent = `
+      .eventCreateBackdrop{
+        position:fixed;
+        inset:0;
+        z-index:99999;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:20px;
+        background:rgba(15,23,42,.72);
+        backdrop-filter:blur(18px);
+      }
+
+      .eventCreateCard{
+        width:min(650px,96vw);
+        max-height:92vh;
+        overflow-y:auto;
+        padding:30px;
+        border-radius:30px;
+        background:rgba(255,255,255,.98);
+        box-shadow:0 35px 100px rgba(0,0,0,.30);
+        border:1px solid rgba(255,255,255,.8);
+      }
+
+      .eventCreateHeader{
+        display:flex;
+        align-items:flex-start;
+        gap:15px;
+        margin-bottom:26px;
+      }
+
+      .eventCreateIcon{
+        width:58px;
+        height:58px;
+        flex:none;
+        display:grid;
+        place-items:center;
+        border-radius:19px;
+        background:linear-gradient(135deg,#22b7f0,#7357e8,#ec4899);
+        color:#fff;
+        font-size:27px;
+        box-shadow:0 12px 30px rgba(115,87,232,.25);
+      }
+
+      .eventCreateHeaderText{
+        flex:1;
+      }
+
+      .eventCreateEyebrow{
+        font-size:11px;
+        font-weight:900;
+        letter-spacing:.12em;
+        color:#7657df;
+        margin-bottom:4px;
+      }
+
+      .eventCreateHeader h2{
+        margin:0 0 5px;
+        font-size:27px;
+        color:#171525;
+      }
+
+      .eventCreateHeader p{
+        margin:0;
+        color:#777387;
+        font-size:14px;
+        line-height:1.5;
+      }
+
+      .eventCreateClose{
+        width:38px;
+        height:38px;
+        border:0;
+        border-radius:50%;
+        background:#f2f1f6;
+        color:#555;
+        font-size:25px;
+        cursor:pointer;
+      }
+
+      .eventCreateStep{
+        display:flex;
+        align-items:center;
+        gap:11px;
+        margin:20px 0 10px;
+      }
+
+      .eventCreateStep span{
+        width:30px;
+        height:30px;
+        display:grid;
+        place-items:center;
+        border-radius:50%;
+        background:linear-gradient(135deg,#6b5ce7,#ec4899);
+        color:#fff;
+        font-size:13px;
+        font-weight:900;
+      }
+
+      .eventCreateStep b{
+        display:block;
+        font-size:14px;
+        color:#252332;
+      }
+
+      .eventCreateStep small{
+        display:block;
+        color:#8a8695;
+        margin-top:2px;
+      }
+
+      .eventCreateLabel{
+        display:block;
+        margin:14px 0 7px;
+        font-size:13px;
+        font-weight:800;
+        color:#403c4b;
+      }
+
+      .eventCreateInput{
+        width:100%;
+        box-sizing:border-box;
+        padding:13px 14px;
+        border:1px solid #e3e0eb;
+        border-radius:14px;
+        background:#faf9fc;
+        color:#252332;
+        font:inherit;
+        outline:none;
+        transition:.2s;
+      }
+
+      .eventCreateInput:focus{
+        border-color:#8167e8;
+        background:#fff;
+        box-shadow:0 0 0 4px rgba(129,103,232,.10);
+      }
+
+      .eventCreateTextarea{
+        resize:vertical;
+        min-height:105px;
+      }
+
+      .eventCreateGrid{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:14px;
+        margin-top:2px;
+      }
+
+      .eventCreatePrice{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:15px;
+        margin-top:22px;
+        padding:15px 17px;
+        border-radius:17px;
+        background:linear-gradient(135deg,#f5f3ff,#fff0f7);
+        border:1px solid #ebe5fa;
+      }
+
+      .eventCreatePrice > div{
+        display:flex;
+        align-items:center;
+        gap:11px;
+      }
+
+      .eventCreatePriceIcon{
+        width:38px;
+        height:38px;
+        display:grid;
+        place-items:center;
+        border-radius:12px;
+        background:#fff;
+      }
+
+      .eventCreatePrice b{
+        display:block;
+        font-size:13px;
+      }
+
+      .eventCreatePrice small{
+        display:block;
+        margin-top:3px;
+        color:#888493;
+      }
+
+      .eventCreatePrice strong{
+        font-size:19px;
+        color:#6d4fe4;
+      }
+
+      .eventCreateActions{
+        display:grid;
+        grid-template-columns:1fr 1.7fr;
+        gap:12px;
+        margin-top:20px;
+      }
+
+      .eventCancelBtn,
+      .eventCreateBtn{
+        min-height:50px;
+        border:0;
+        border-radius:15px;
+        font-weight:900;
+        font-size:14px;
+        cursor:pointer;
+      }
+
+      .eventCancelBtn{
+        background:#f2f1f5;
+        color:#55515e;
+      }
+
+      .eventCreateBtn{
+        color:#fff;
+        background:linear-gradient(135deg,#20b5ef,#7255e8,#ec4899);
+        box-shadow:0 10px 25px rgba(108,78,220,.25);
+      }
+
+      .eventCreateBtn:hover{
+        transform:translateY(-1px);
+      }
+
+      .eventCreateSecure{
+        text-align:center;
+        margin-top:13px;
+        color:#9995a3;
+        font-size:11px;
+      }
+
+      @media(max-width:600px){
+        .eventCreateCard{
+          padding:22px;
+          border-radius:24px;
+        }
+
+        .eventCreateGrid{
+          grid-template-columns:1fr;
+          gap:0;
+        }
+
+        .eventCreateActions{
+          grid-template-columns:1fr;
+        }
+
+        .eventCreateHeader h2{
+          font-size:23px;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
 
   document.getElementById('saveEventBtn').onclick = async () => {
 
@@ -410,82 +687,118 @@ async function createCommunityEvent(){
     if(Number.isNaN(dt.getTime()))
       return toast('Invalid date/time.');
 
-   try {
-    // 1. Create ₹29 payment order
-    const order = await api('/api/features/order', {
-      method: 'POST',
-      body: {
-        product: 'event_create'
-      }
-    });
+    const btn = document.getElementById('saveEventBtn');
 
-    // 2. Load Razorpay
-    await loadRazorpay();
+    try {
 
-    // 3. Open Razorpay checkout
-    await new Promise((resolve, reject) => {
-    const checkout = new Razorpay({
-      key: order.keyId,
-      amount: order.amount,
-      currency: 'INR',
-      name: 'VibeMeet',
-      description: 'Create Community Event · ₹29',
-      order_id: order.orderId,
+      btn.disabled = true;
+      btn.textContent = vipActive
+        ? 'Creating event...'
+        : 'Opening secure payment...';
 
+      /* VIP users create directly */
+      if(!vipActive){
 
-      prefill: {
-        name: user?.name || '',
-        email: user?.email || ''
-      },
+        const order = await api('/api/features/order', {
+          method:'POST',
+          body:{
+            product:'event_create'
+          }
+        });
 
-      theme: {
-        color: '#6b4ce6'
-      },
+        await loadRazorpay();
 
-      modal: {
-        ondismiss: () => reject(new Error('Payment cancelled'))
-      },
+        await new Promise((resolve,reject) => {
 
-      handler: async payment => {
-        try {
-          // 4. Verify payment
-          await api('/api/features/verify', {
-            method: 'POST',
-            body: {
-              orderId: payment.razorpay_order_id,
-              paymentId: payment.razorpay_payment_id,
-              signature: payment.razorpay_signature
+          const checkout = new Razorpay({
+
+            key:order.keyId,
+            amount:order.amount,
+            currency:'INR',
+            name:'VibeMeet',
+            description:'Community Event Creation · ₹29',
+            order_id:order.orderId,
+
+            prefill:{
+              name:user?.name || '',
+              email:user?.email || ''
+            },
+
+            theme:{
+              color:'#6b4ce6'
+            },
+
+            modal:{
+              ondismiss:() =>
+                reject(new Error('Payment cancelled'))
+            },
+
+            handler:async payment => {
+
+              try{
+
+                if(
+                  !payment?.razorpay_order_id ||
+                  !payment?.razorpay_payment_id ||
+                  !payment?.razorpay_signature
+                ){
+                  throw new Error('Payment response was incomplete.');
+                }
+
+                await api('/api/features/verify',{
+                  method:'POST',
+                  body:{
+                    orderId:payment.razorpay_order_id,
+                    paymentId:payment.razorpay_payment_id,
+                    signature:payment.razorpay_signature
+                  }
+                });
+
+                resolve();
+
+              }catch(e){
+                reject(e);
+              }
             }
+
           });
 
-          resolve();
-        } catch (e) {
-          reject(e);
+          checkout.open();
+        });
+      }
+
+      btn.textContent = 'Creating event...';
+
+      await api(`/api/groups/${selectedGroup.id}/events`,{
+        method:'POST',
+        body:{
+          title,
+          description,
+          location,
+          startsAt:dt.toISOString()
         }
-      }
-    });
+      });
 
-    checkout.open();
-  });
+      modal.remove();
 
-  // 5. Payment successful → create event
-    await api(`/api/groups/${selectedGroup.id}/events`, {
-      method: 'POST',
-      body: {
-        title,
-        description,
-        location,
-        startsAt: dt.toISOString()
-      }
-    });
+      toast(
+        vipActive
+          ? '💎 Event created successfully!'
+          : '📅 Payment successful — event created!'
+      );
 
-    modal.remove();
-    toast('📅 Event created successfully!');
-    render('events');
+      render('events');
 
-  } catch (e) {
-    toast(e.message);
-  }
+    }catch(e){
+
+      btn.disabled = false;
+
+      btn.textContent = vipActive
+        ? '💎 Create Event'
+        : '✨ Pay ₹29 & Create';
+
+      toast(e.message);
+    }
   };
 }
 
