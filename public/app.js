@@ -196,6 +196,8 @@ async function createCommunity(){
         ondismiss:()=>toast("Payment cancelled")
       },
       handler:async r=>{
+        console.log("RAZORPAY RESPONSE:", r);
+
         try{
           await api("/api/features/verify",{
             method:"POST",
