@@ -430,6 +430,8 @@ async function createCommunityEvent(){
       currency: 'INR',
       name: 'VibeMeet',
       description: 'Create Community Event · ₹29',
+      order_id: order.orderId,
+
 
       prefill: {
         name: user?.name || '',
