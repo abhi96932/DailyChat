@@ -85,6 +85,68 @@ async function finishOnboarding(){try{const body={name:user.name,age:user.age,ci
 
 async function render(p){try{if(p==='home')return renderHome();if(p==='matches')return renderMatches();if(p==='groups')return renderGroups();if(p==='events')return renderEvents();if(p==='people')return renderPeople();if(p==='messages')return renderMessages();if(p==='calls')return renderCalls();if(p==='profile')return renderProfile();if(p==='compatibility')return renderCompatibility();if(p==='vip')return renderVip();if(p==='admin')return renderAdmin()}catch(e){page.innerHTML=`<div class="pagepad"><div class="card"><h3>Something went wrong</h3><p class="muted">${esc(e.message)}</p><button class="primary" onclick="render('home')">Back to Discover</button></div></div>`}}
 
+async function buyExtraLike(){
+  try{
+    const order = await api('/api/features/order',{
+      method:'POST',
+      body:{product:'extra_like'}
+    });
+
+    await loadRazorpay();
+
+    const checkout = new Razorpay({
+      key:order.keyId,
+      amount:order.amount,
+      currency:'INR',
+      name:'VibeMeet',
+      description:'Reveal 1 more Like You · ₹19',
+      order_id:order.orderId,
+
+      prefill:{
+        name:user?.name || '',
+        email:user?.email || ''
+      },
+
+      theme:{
+        color:'#6b4ce6'
+      },
+
+      modal:{
+        ondismiss:()=>toast('Payment cancelled')
+      },
+
+      handler:async payment=>{
+        try{
+          await api('/api/features/verify',{
+            method:'POST',
+            body:{
+              orderId:payment.razorpay_order_id,
+              paymentId:payment.razorpay_payment_id,
+              signature:payment.razorpay_signature
+            }
+          });
+
+          await api('/api/features/use',{
+            method:'POST',
+            body:{product:'extra_like'}
+          });
+
+          toast('💌 One more Like You revealed!');
+          renderMatches('likes');
+
+        }catch(e){
+          toast(e.message);
+        }
+      }
+    });
+
+    checkout.open();
+
+  }catch(e){
+    toast(e.message);
+  }
+}
+
 async function renderHome(){
   discover=await api('/api/discover');
   const matches=await api('/api/matches');
@@ -118,7 +180,34 @@ async function renderHome(){
 function setDiscoverFilter(value){window.discoverFilter=value;render('home')}
 function showMatchCelebration(x){const old=document.getElementById('matchCelebration');if(old)old.remove();const modal=document.createElement('div');modal.id='matchCelebration';modal.className='matchCelebration';modal.innerHTML=`<div class="matchCelebrateCard"><button class="matchCelebrateClose" onclick="document.getElementById('matchCelebration')?.remove()">×</button><div class="matchConfetti" aria-hidden="true">✦ ✨ 💗 ✨ ✦</div><div class="matchSpark">💞</div><div class="eyebrow">IT’S A MATCH!</div><h2>You and ${esc(x.name||'someone special')} liked each other</h2><p class="muted">It’s mutual! Your connection is ready. Say hello and start something genuine.</p><div class="matchCelebratePill">✨ Mutual chemistry unlocked</div><div class="matchCelebratePhoto">${avatarHtml(x.avatar,'matchCelebrateImg')}</div><div class="actions matchCelebrateActions"><button class="primary" onclick="document.getElementById('matchCelebration')?.remove();messageUser(${Number(x.id||x.user_id)},'${esc(x.name||'').replace(/'/g,"\\'")}')">💬 Send a message</button><button class="secondary" onclick="document.getElementById('matchCelebration')?.remove();render('matches')">View matches</button></div></div>`;document.body.appendChild(modal);requestAnimationFrame(()=>modal.classList.add('show'))}
 async function swipe(i,direction){const x=discover[i];if(!x)return;try{const r=await api('/api/swipes',{method:'POST',body:{targetId:x.id,direction}});discover.splice(i,1);if(r.matched){showMatchCelebration(x);return}render('home')}catch(e){toast(e.message)}}
-async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab=tab;const [m,likes]=await Promise.all([api('/api/matches'),api('/api/likes')]);const incoming=likes.incoming||[],outgoing=likes.outgoing||[];const tabBtn=(key,label,count)=>`<button class="matchTab ${tab===key?'active':''}" onclick="renderMatches('${key}')">${label}<span>${count}</span></button>`;const matchCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge">💞 Match</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">You both liked each other ✨</div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button><button class="danger" onclick="unmatchFromMatches(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}','${esc(x.avatar||'')}')">💔 Unmatch</button></div></div></article>`;const likeCard=x=>`<article class="matchCardPro likeCard"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge newLike">✨ New like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Liked you • ${esc(x.course||'')}</div><div class="actions"><button class="primary" onclick="respondToLike(${x.user_id},'like')">❤️ Like back</button><button class="secondary" onclick="respondToLike(${x.user_id},'pass')">Pass</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div></article>`;const sentCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge sentLike">💙 Sent like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Waiting for them to like you back</div><div class="actions"><button class="secondary" onclick="viewProfile(${x.user_id})">View profile</button></div></div></article>`;let title='',sub='',cards='';if(tab==='likes'){title='Likes you';sub='People who already liked you. Like them back to make an instant match.';const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();if(incoming.length){const visible=vipActive?incoming:incoming.slice(0,1);cards=visible.map(likeCard).join('');if(!vipActive&&incoming.length>1){cards+=`<article class="card vipLikesUpsell"><div class="vipLikesIcon">💎</div><div><div class="eyebrow">VIBEMEET VIP</div><h3>See all ${incoming.length} people who liked you</h3><p class="muted">Unlock the full Likes You list, see every profile clearly and connect without guessing.</p><button class="primary" onclick="render('vip')">✨ Unlock Likes You</button></div></article>`}}else{cards=''} }else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incoming.length)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}
+async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab=tab;const [m,likes]=await Promise.all([api('/api/matches'),api('/api/likes')]);const incoming=likes.incoming||[],outgoing=likes.outgoing||[];const tabBtn=(key,label,count)=>`<button class="matchTab ${tab===key?'active':''}" onclick="renderMatches('${key}')">${label}<span>${count}</span></button>`;const matchCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge">💞 Match</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">You both liked each other ✨</div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button><button class="danger" onclick="unmatchFromMatches(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}','${esc(x.avatar||'')}')">💔 Unmatch</button></div></div></article>`;const likeCard=x=>`<article class="matchCardPro likeCard"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge newLike">✨ New like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Liked you • ${esc(x.course||'')}</div><div class="actions"><button class="primary" onclick="respondToLike(${x.user_id},'like')">❤️ Like back</button><button class="secondary" onclick="respondToLike(${x.user_id},'pass')">Pass</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div></article>`;const sentCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge sentLike">💙 Sent like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Waiting for them to like you back</div><div class="actions"><button class="secondary" onclick="viewProfile(${x.user_id})">View profile</button></div></div></article>`;let title='',sub='',cards='';if(tab==='likes'){title='Likes you';sub='People who already liked you. Like them back to make an instant match.';const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
+if(incoming.length){
+  cards=incoming.map(likeCard).join('');
+
+  if(!vipActive && likes.lockedCount>0){
+    cards+=`
+      <article class="card vipLikesUpsell">
+        <div class="vipLikesIcon">💌</div>
+        <div>
+          <div class="eyebrow">MORE PEOPLE LIKE YOU</div>
+          <h3>${likes.lockedCount} more ${likes.lockedCount===1?'person':'people'} are waiting</h3>
+          <p class="muted">
+            Reveal the next person who liked you for just ₹19.
+            VIP members see everyone automatically.
+          </p>
+
+          <button class="primary" onclick="buyExtraLike()">
+            💌 Reveal 1 more · ₹19
+          </button>
+
+          <button class="secondary" style="margin-left:8px" onclick="render('vip')">
+            💎 Get VIP
+          </button>
+        </div>
+      </article>
+    `;
+  }
+}else{cards=''} }else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incoming.length)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}
 function professionalConfirm({title='Unmatch this person?',message='This will remove your match and end the connection.',name='',photo='',confirmText='Unmatch',danger=true}={}){return new Promise(resolve=>{const existing=$('professionalConfirmModal');if(existing)existing.remove();const modal=document.createElement('div');modal.id='professionalConfirmModal';modal.className='proConfirmOverlay';const safePhoto=photo&&String(photo).startsWith('data:image/')?`<img src="${esc(photo)}" alt="" class="proConfirmAvatar">`:'<div class="proConfirmAvatar proConfirmFallback">💔</div>';modal.innerHTML=`<div class="proConfirmCard" role="dialog" aria-modal="true" aria-labelledby="proConfirmTitle"><button class="proConfirmClose" aria-label="Close">×</button><div class="proConfirmIcon">💔</div><div class="proConfirmPerson">${safePhoto}<div><div class="proConfirmEyebrow">CONFIRM ACTION</div><h3 id="proConfirmTitle">${esc(title)}</h3>${name?`<div class="proConfirmName">${esc(name)}</div>`:''}</div></div><p class="proConfirmMessage">${esc(message)}</p><div class="proConfirmNote">This action can’t be undone from this screen.</div><div class="proConfirmActions"><button class="secondary proConfirmCancel">Cancel</button><button class="${danger?'danger':'primary'} proConfirmOk">${esc(confirmText)}</button></div></div>`;document.body.appendChild(modal);const finish=value=>{modal.remove();resolve(value)};modal.querySelector('.proConfirmClose').onclick=()=>finish(false);modal.querySelector('.proConfirmCancel').onclick=()=>finish(false);modal.querySelector('.proConfirmOk').onclick=()=>finish(true);modal.onclick=e=>{if(e.target===modal)finish(false)};const key=e=>{if(e.key==='Escape'){finish(false);document.removeEventListener('keydown',key)}};document.addEventListener('keydown',key);setTimeout(()=>modal.querySelector('.proConfirmOk')?.focus(),30)})}
 
 async function unmatchFromMatches(userId,name,photo=''){if(!(await professionalConfirm({title:'Unmatch this person?',message:`Your match with ${name} will be removed. You won’t be able to continue this connection unless you match again in the future.`,name,photo,confirmText:'Yes, unmatch'})))return;try{await api(`/api/matches/${userId}`,{method:'DELETE'});toast(`Unmatched with ${name}`);renderMatches('matches')}catch(e){toast(e.message)}}

@@ -34,7 +34,8 @@ const featurePurchasesReady = q(`
     status TEXT NOT NULL DEFAULT 'created',
     order_id TEXT UNIQUE,
     payment_id TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    used_at TIMESTAMP
   )
 `);
 
@@ -345,14 +346,32 @@ app.get("/api/likes",auth,async(req,res)=>{
     [req.user.id]
   );
 
-  const incomingRows=incoming.rows.filter(x=>!x.matched);
+  const incomingRows = incoming.rows.filter(x => !x.matched);
+
+  const extraLikes = await q(
+    `SELECT COUNT(*)::int AS count
+    FROM feature_purchases
+    WHERE user_id=$1
+     AND product='extra_like'
+     AND status='paid'
+     AND used_at IS NULL`,
+    [req.user.id]
+  );
+
+  const paidExtraLikes = extraLikes.rows[0]?.count || 0;
+
+  const visibleCount = vipActive
+    ? incomingRows.length
+    : Math.min(incomingRows.length, 1 + paidExtraLikes);
 
   res.json({
-    incoming:vipActive?incomingRows:incomingRows.slice(0,1),
-    incomingCount:incomingRows.length,
-    outgoing:outgoing.rows.filter(x=>!x.matched),
+    incoming: incomingRows.slice(0, visibleCount),
+    incomingCount: incomingRows.length,
+    lockedCount: Math.max(0, incomingRows.length - visibleCount),
+    outgoing: outgoing.rows.filter(x => !x.matched),
     vipActive
   });
+
 });
 
 
@@ -485,6 +504,45 @@ app.post("/api/features/verify", auth, async (req, res) => {
     });
   }
 });
+
+app.post("/api/features/use", auth, async (req, res) => {
+  try {
+    const { product } = req.body;
+
+    if (product !== "extra_like") {
+      return res.status(400).json({ error: "Invalid feature" });
+    }
+
+    const used = await q(
+      `UPDATE feature_purchases
+       SET used_at = NOW()
+       WHERE id = (
+         SELECT id
+         FROM feature_purchases
+         WHERE user_id = $1
+           AND product = 'extra_like'
+           AND status = 'paid'
+           AND used_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING id`,
+      [req.user.id]
+    );
+
+    if (!used.rowCount) {
+      return res.status(402).json({
+        error: "No unused Like reveal available"
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Feature use error:", e.message);
+    res.status(500).json({ error: "Unable to use feature" });
+  }
+});
+
 app.post("/api/payments/verify",auth,async(req,res)=>{const {orderId,paymentId,signature}=req.body;if(!process.env.RAZORPAY_KEY_SECRET)return res.status(503).json({error:"Payments not configured"});const expected=crypto.createHmac('sha256',process.env.RAZORPAY_KEY_SECRET).update(orderId+'|'+paymentId).digest('hex');if(!signature||signature.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))return res.status(400).json({error:'Invalid payment signature'});const sub=await q("UPDATE subscriptions SET payment_id=$1,status='paid' WHERE user_id=$2 AND order_id=$3 AND status<>'paid' RETURNING product",[paymentId,req.user.id,orderId]);if(!sub.rowCount)return res.status(409).json({error:'Payment already processed or order not found'});if(sub.rows[0].product==='call_pass'){const days=Number(process.env.CALL_PASS_DAYS||7);await q("UPDATE users SET call_pass_until=GREATEST(COALESCE(call_pass_until,NOW()),NOW())+($1::int * INTERVAL '1 day') WHERE id=$2",[days,req.user.id])}else await q("UPDATE users SET vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+INTERVAL '30 days' WHERE id=$1",[req.user.id]);res.json({ok:true})});
 
 // Admin
