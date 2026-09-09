@@ -348,7 +348,7 @@ app.get("/api/likes",auth,async(req,res)=>{
 
   const incomingRows = incoming.rows.filter(x => !x.matched);
 
-  const extraLikes = await q(
+  const revealedLikes = await q(
     `SELECT COUNT(*)::int AS count
     FROM feature_purchases
     WHERE user_id=$1
@@ -358,7 +358,7 @@ app.get("/api/likes",auth,async(req,res)=>{
     [req.user.id]
   );
 
-  const paidExtraLikes = extraLikes.rows[0]?.count || 0;
+  const paidExtraLikes = revealedLikes.rows[0]?.count || 0;
 
   const visibleCount = vipActive
     ? incomingRows.length
