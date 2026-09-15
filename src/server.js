@@ -72,12 +72,35 @@ const messagingFeaturesReady=(async()=>{await q("ALTER TABLE messages ADD COLUMN
 const buckets=new Map();
 async function createNotification(userId,actorId,type,title,body){
   try{
-    await q(
+    await notificationsReady;
+
+    const r=await q(
       `INSERT INTO notifications
        (user_id,actor_id,type,title,body)
-       VALUES($1,$2,$3,$4,$5)`,
+       VALUES($1,$2,$3,$4,$5)
+       RETURNING id,actor_id,type,title,body,read_at,created_at`,
       [userId,actorId,type,title,body||null]
     );
+
+    const n=r.rows[0];
+
+    let actor={rows:[]};
+
+    if(actorId){
+      actor=await q(
+        `SELECT name,avatar
+         FROM users
+         WHERE id=$1`,
+        [actorId]
+      );
+    }
+
+    io.to(`user:${userId}`).emit('notification:new',{
+      ...n,
+      actor_name:actor.rows[0]?.name||null,
+      actor_avatar:actor.rows[0]?.avatar||null
+    });
+
   }catch(e){
     console.error("Notification error:",e.message);
   }
@@ -291,8 +314,56 @@ function targetAccepts(me,target){if(target.match_preference==="any")return true
 app.get("/api/discover",auth,async(req,res)=>{const me=(await q(`SELECT * FROM users WHERE id=$1`,[req.user.id])).rows[0];const params=[req.user.id],r=await q(`SELECT u.* FROM users u WHERE u.id<>$1 AND u.status<>'banned' AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1)) AND NOT EXISTS(SELECT 1 FROM swipes s WHERE s.swiper_id=$1 AND s.target_id=u.id) ORDER BY u.verified DESC,u.created_at DESC LIMIT 60`,[req.user.id]);const candidates=[];for(const u of r.rows){if(oppositeOk(me,u)&&targetAccepts(me,u))candidates.push(u)}
  const ids=candidates.map(x=>x.id);let groups=[];if(ids.length){groups=(await q("SELECT group_id,user_id FROM group_members WHERE user_id=ANY($1::bigint[])",[ids])).rows}const myGroups=(await q("SELECT group_id FROM group_members WHERE user_id=$1",[req.user.id])).rows.map(x=>Number(x.group_id));const qa=(await q("SELECT question_id,answer FROM compatibility_answers WHERE user_id=$1",[req.user.id])).rows;const qmap=new Map(qa.map(x=>[Number(x.question_id),x.answer]));const ids2=[...new Set(groups.map(x=>Number(x.group_id)))];const answerRows=ids.length?await q("SELECT user_id,question_id,answer FROM compatibility_answers WHERE user_id=ANY($1::bigint[])",[ids]):{rows:[]};const groupMap=new Map();for(const g of groups){const n=Number(g.user_id);if(!groupMap.has(n))groupMap.set(n,new Set());groupMap.get(n).add(Number(g.group_id))}const ansMap=new Map();for(const a of answerRows.rows){const n=Number(a.user_id);if(!ansMap.has(n))ansMap.set(n,new Map());ansMap.get(n).set(Number(a.question_id),a.answer)}function score(u){let s=45,reasons=[];if(u.age&&me.age){const d=Math.abs(u.age-me.age);if(d<=2){s+=12;reasons.push("Similar age")}else if(d<=5){s+=7}}if(me.city&&u.city&&me.city.toLowerCase()===u.city.toLowerCase()){s+=10;reasons.push("Same city")}if(me.course&&u.course&&me.course.toLowerCase()===u.course.toLowerCase()){s+=8;reasons.push("Same course")}const common=[...(groupMap.get(u.id)||[])].filter(x=>myGroups.includes(x));if(common.length){s+=Math.min(20,common.length*7);reasons.push(`${common.length} common group${common.length>1?'s':''}`)}const a=ansMap.get(u.id);let sameAnswers=0;if(a)for(const [qid,val] of qmap)if(a.get(qid)===val)sameAnswers++;if(sameAnswers){s+=Math.min(15,sameAnswers*4);reasons.push(`${sameAnswers} compatible answers`)}const commonInterests=(u.interests||[]).filter(x=>(me.interests||[]).map(v=>String(v).toLowerCase()).includes(String(x).toLowerCase()));if(commonInterests.length){s+=Math.min(15,commonInterests.length*3);reasons.push(`${commonInterests.length} shared interest${commonInterests.length>1?'s':''}`)}if(u.mode&&me.mode&&u.mode===me.mode){s+=5;reasons.push("Same connection mode")}if(u.verified){s+=3;reasons.push("Verified profile")}return {score:Math.min(99,s),reasons:reasons.slice(0,4)}}
  const out=candidates.map(u=>{const z=score(u);return {id:u.id,name:u.name,avatar:u.avatar,bio:u.bio,verified:u.verified,age:u.age,city:u.city,college:u.college,course:u.course,relationship_intent:u.relationship_intent,interests:u.interests,languages:u.languages,gender:u.gender,mode:u.mode,match_score:z.score,reasons:z.reasons}}).sort((a,b)=>b.match_score-a.match_score);res.json(out)});
-app.post("/api/swipes",auth,async(req,res)=>{const target=Number(req.body.targetId),direction=req.body.direction;if(!Number.isInteger(target)||target===req.user.id||!['like','pass'].includes(direction))return res.status(400).json({error:"Invalid swipe"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,$3) ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction=EXCLUDED.direction,created_at=NOW()",[req.user.id,target,direction]);let matched=false;if(direction==='like'){const reciprocal=await q("SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",[target,req.user.id]);if(reciprocal.rowCount){const a=Math.min(req.user.id,target),b=Math.max(req.user.id,target);await q("INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[a,b]);matched=true;io.to(`user:${target}`).emit("new:match",{userId:req.user.id})}}res.json({ok:true,matched})});
-app.get("/api/matches",auth,async(req,res)=>{const r=await q(`SELECT m.id,CASE WHEN m.user1_id=$1 THEN u2.id ELSE u1.id END user_id,CASE WHEN m.user1_id=$1 THEN u2.name ELSE u1.name END name,CASE WHEN m.user1_id=$1 THEN u2.avatar ELSE u1.avatar END avatar,CASE WHEN m.user1_id=$1 THEN u2.verified ELSE u1.verified END verified FROM matches m JOIN users u1 ON u1.id=m.user1_id JOIN users u2 ON u2.id=m.user2_id WHERE m.user1_id=$1 OR m.user2_id=$1 ORDER BY m.created_at DESC`,[req.user.id]);res.json(r.rows)});
+app.post("/api/swipes",auth,async(req,res)=>{const target=Number(req.body.targetId),direction=req.body.direction;if(!Number.isInteger(target)||target===req.user.id||!['like','pass'].includes(direction))return res.status(400).json({error:"Invalid swipe"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,$3) ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction=EXCLUDED.direction,created_at=NOW()",[req.user.id,target,direction]);let matched=false;if(direction==='like'){
+    const reciprocal=await q(
+      "SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",
+      [target,req.user.id]
+    );
+
+    if(reciprocal.rowCount){
+
+      const a=Math.min(req.user.id,target);
+      const b=Math.max(req.user.id,target);
+
+      await q(
+        "INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [a,b]
+      );
+
+      matched=true;
+
+      await createNotification(
+        target,
+        req.user.id,
+        "match",
+        "💞 It's a match!",
+        "You both liked each other. Start the conversation!"
+      );
+
+      await createNotification(
+        req.user.id,
+        target,
+        "match",
+        "💞 It's a match!",
+        "You both liked each other. Start the conversation!"
+      );
+
+      io.to(`user:${target}`).emit("new:match",{userId:req.user.id});
+
+    } else {
+
+      await createNotification(
+        target,
+        req.user.id,
+        "like",
+        "❤️ Someone likes you!",
+        "Someone liked your profile. Check Likes You to see who it is."
+      );
+    }
+  }
+});
+
+  app.get("/api/matches",auth,async(req,res)=>{const r=await q(`SELECT m.id,CASE WHEN m.user1_id=$1 THEN u2.id ELSE u1.id END user_id,CASE WHEN m.user1_id=$1 THEN u2.name ELSE u1.name END name,CASE WHEN m.user1_id=$1 THEN u2.avatar ELSE u1.avatar END avatar,CASE WHEN m.user1_id=$1 THEN u2.verified ELSE u1.verified END verified FROM matches m JOIN users u1 ON u1.id=m.user1_id JOIN users u2 ON u2.id=m.user2_id WHERE m.user1_id=$1 OR m.user2_id=$1 ORDER BY m.created_at DESC`,[req.user.id]);res.json(r.rows)});
 app.get("/api/likes",auth,async(req,res)=>{
   const vip=await q(
     `SELECT vip_until>NOW() AS active FROM users WHERE id=$1`,
@@ -562,7 +633,16 @@ io.on('connection',socket=>{const uid=socket.user.id;socket.join(`user:${uid}`);
  socket.on('group:message',async({groupId,body}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(groupId);if(!id)return;const member=await q('SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2',[id,uid]);if(!member.rowCount)return;const r=await q('INSERT INTO messages(sender_id,group_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at',[uid,id,body.trim()]);io.to(`group:${id}`).emit('group:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name})});
  socket.on('dm:join',async id=>{id=safeInt(id);if(id&&id!==uid){socket.join(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`);socket.emit('presence:update',{userId:id,status:onlineSockets.has(id)?'online':'offline'});}});
  socket.on('dm:typing',({to,typing=false}={})=>{const id=safeInt(to);if(!id||id===uid)return;io.to(`user:${id}`).emit('dm:typing',{userId:uid,typing:Boolean(typing)});});
- socket.on('dm:message',async({to,body,replyToId=null}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(to);if(!id||id===uid)return;await messagingFeaturesReady;const b=await q('SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',[id,uid]);if(b.rowCount)return;let rid=replyToId==null?null:safeInt(replyToId);if(rid){const ok=await q('SELECT 1 FROM messages WHERE id=$1 AND ((sender_id=$2 AND receiver_id=$3) OR (sender_id=$3 AND receiver_id=$2))',[rid,uid,id]);if(!ok.rowCount)rid=null}const r=await q('INSERT INTO messages(sender_id,receiver_id,body,reply_to_id) VALUES($1,$2,$3,$4) RETURNING id,body,created_at,read_at,reply_to_id',[uid,id,body.trim(),rid]);let reply=null;if(rid){const rr=await q('SELECT m.body,u.name sender_name FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.id=$1',[rid]);reply=rr.rows[0]||null}io.to(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`).emit('dm:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name,reply_body:reply?.body||null,reply_sender_name:reply?.sender_name||null,reactions:[]})});
+ socket.on('dm:message',async({to,body,replyToId=null}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(to);if(!id||id===uid)return;await messagingFeaturesReady;const b=await q('SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',[id,uid]);if(b.rowCount)return;let rid=replyToId==null?null:safeInt(replyToId);if(rid){const ok=await q('SELECT 1 FROM messages WHERE id=$1 AND ((sender_id=$2 AND receiver_id=$3) OR (sender_id=$3 AND receiver_id=$2))',[rid,uid,id]);if(!ok.rowCount)rid=null}const r=await q('INSERT INTO messages(sender_id,receiver_id,body,reply_to_id) VALUES($1,$2,$3,$4) RETURNING id,body,created_at,read_at,reply_to_id',[uid,id,body.trim(),rid]);let reply=null;if(rid){const rr=await q('SELECT m.body,u.name sender_name FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.id=$1',[rid]);reply=rr.rows[0]||null}io.to(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`).emit('dm:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name,reply_body:reply?.body||null,reply_sender_name:reply?.sender_name||null,reactions:[]});
+
+  await createNotification(
+    id,
+    uid,
+    "message",
+    `💬 ${socket.user.name} sent you a message`,
+    "Open your conversation to reply."
+  );
+});
  socket.on('dm:reaction',async({messageId,emoji}={})=>{await messagingFeaturesReady;if(!socketRate(uid))return;const mid=safeInt(messageId),em=typeof emoji==='string'?emoji.trim().slice(0,16):'';if(!mid||!em)return;const own=await q('SELECT sender_id,receiver_id FROM messages WHERE id=$1',[mid]);if(!own.rowCount)return;const m=own.rows[0];if(m.sender_id!==uid&&m.receiver_id!==uid)return;const pair=Math.min(m.sender_id,m.receiver_id)+':'+Math.max(m.sender_id,m.receiver_id);const existing=await q('SELECT id FROM message_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3',[mid,uid,em]);if(existing.rowCount)await q('DELETE FROM message_reactions WHERE id=$1',[existing.rows[0].id]);else await q('INSERT INTO message_reactions(message_id,user_id,emoji) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[mid,uid,em]);const rs=await q('SELECT emoji,COUNT(*)::int count,BOOL_OR(user_id=$2) mine FROM message_reactions WHERE message_id=$1 GROUP BY emoji ORDER BY emoji',[mid,uid]);io.to(`dm:${pair}`).emit('dm:reaction',{messageId:mid,reactions:rs.rows})});
  socket.on('call:offer',async({to,offer,type='video'}={})=>{const id=safeInt(to);if(!id||!offer)return;const target=await q('SELECT id,gender FROM users WHERE id=$1',[id]),me=await q('SELECT gender,call_pass_until FROM users WHERE id=$1',[uid]);if(!target.rowCount||!me.rowCount)return;const opposite=['male','female'].every(x=>[me.rows[0].gender,target.rows[0].gender].includes(x))&&me.rows[0].gender!==target.rows[0].gender,pass=me.rows[0].call_pass_until&&new Date(me.rows[0].call_pass_until)>new Date();if(opposite&&!pass)return socket.emit('call:blocked',{reason:'Call Pass required for opposite-gender calls'});io.to(`user:${id}`).emit('call:offer',{from:uid,offer,type})});
  socket.on('call:answer',({to,answer}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:answer',{from:uid,answer})});socket.on('call:ice',({to,candidate}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:ice',{from:uid,candidate})});socket.on('call:end',({to}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:end',{from:uid})});

@@ -1,4 +1,195 @@
 let token=localStorage.getItem('vm_token'),user=JSON.parse(localStorage.getItem('vm_user')||'null'),socket=null,discover=[],people=[],groups=[],events=[],activePerson=null,activeGroup=null,activeRoom=null,typingTimer=null;
+let notifications=[];
+let notificationsOpen=false;
+
+if(!document.getElementById('notificationStyles')){
+  const st=document.createElement('style');
+  st.id='notificationStyles';
+  st.textContent=`
+    .notificationBtn{
+      position:relative;
+      width:42px;
+      height:42px;
+      border:1px solid rgba(120,90,200,.18);
+      border-radius:14px;
+      background:rgba(255,255,255,.78);
+      font-size:19px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      transition:.2s ease;
+      flex-shrink:0;
+    }
+
+    .notificationBtn:hover{
+      transform:translateY(-1px);
+      box-shadow:0 8px 22px rgba(90,60,160,.14);
+    }
+
+    .notificationBadge{
+      position:absolute;
+      top:-5px;
+      right:-5px;
+      min-width:19px;
+      height:19px;
+      padding:0 5px;
+      border-radius:999px;
+      background:#ef3f73;
+      color:#fff;
+      font-size:10px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid #fff;
+    }
+
+    .notificationsPanel{
+      position:absolute;
+      top:58px;
+      right:20px;
+      width:390px;
+      max-width:calc(100vw - 28px);
+      background:rgba(255,255,255,.97);
+      border:1px solid rgba(120,90,200,.15);
+      border-radius:22px;
+      box-shadow:0 24px 70px rgba(45,25,90,.20);
+      overflow:hidden;
+      z-index:9999;
+      backdrop-filter:blur(20px);
+    }
+
+    .notificationsHead{
+      padding:18px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      border-bottom:1px solid rgba(120,90,200,.10);
+    }
+
+    .notificationsHead b{
+      display:block;
+      font-size:17px;
+    }
+
+    .notificationsHead small{
+      display:block;
+      margin-top:3px;
+      color:#858092;
+      font-size:11px;
+    }
+
+    .notificationReadBtn{
+      border:0;
+      background:transparent;
+      color:#7046d8;
+      font-size:11px;
+      font-weight:800;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+
+    .notificationsList{
+      max-height:440px;
+      overflow:auto;
+    }
+
+    .notificationItem{
+      display:flex;
+      gap:12px;
+      padding:14px 16px;
+      border-bottom:1px solid rgba(120,90,200,.08);
+      transition:.15s ease;
+    }
+
+    .notificationItem:hover{
+      background:rgba(124,58,237,.045);
+    }
+
+    .notificationItem.unread{
+      background:rgba(124,58,237,.065);
+    }
+
+    .notificationAvatar{
+      width:44px;
+      height:44px;
+      border-radius:15px;
+      object-fit:cover;
+      flex-shrink:0;
+      background:#f1edfb;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:20px;
+    }
+
+    .notificationContent{
+      min-width:0;
+      flex:1;
+    }
+
+    .notificationTitle{
+      font-weight:850;
+      font-size:13px;
+      line-height:1.3;
+    }
+
+    .notificationBody{
+      margin-top:3px;
+      color:#777184;
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .notificationTime{
+      margin-top:6px;
+      color:#aaa2b5;
+      font-size:10px;
+      font-weight:700;
+    }
+
+    .notificationDot{
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:#7c3aed;
+      margin-top:6px;
+      flex-shrink:0;
+    }
+
+    .notificationEmpty{
+      padding:45px 20px;
+      text-align:center;
+      color:#777184;
+    }
+
+    .notificationEmpty div{
+      font-size:35px;
+      margin-bottom:10px;
+    }
+
+    .notificationEmpty b{
+      display:block;
+      color:#282332;
+      margin-bottom:5px;
+    }
+
+    .notificationEmpty span{
+      font-size:12px;
+    }
+
+    @media(max-width:600px){
+      .notificationsPanel{
+        right:10px;
+        top:56px;
+        width:calc(100vw - 20px);
+      }
+    }
+  `;
+  document.head.appendChild(st);
+}
 function presenceHtml(status){const online=status==='online';return `<span class="presenceBadge ${online?'isOnline':'isOffline'}"><i></i>${online?'Online':'Offline'}</span>`}
 let pc=null,localStream=null,currentCallPeer=null,callMode='video',pendingCallOffer=null,pendingIce=[];
 let answerDraft={},profilePhotos=[],publicPhotoIndex=0,replyDraft=null,messageCache=new Map();
@@ -10,9 +201,158 @@ const avatarHtml=(a,cls='profileAvatar')=>a?`<img class="${cls}" src="${esc(a)}"
 if(!$('multiPhotoStyles')){const st=document.createElement('style');st.id='multiPhotoStyles';st.textContent=`.multiPhotoHead{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px}.photoGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.photoTile{position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:2px solid transparent;background:#f4f3fa;cursor:grab}.photoTile.main{border-color:#8b5cf6}.photoTile img{width:100%;height:100%;object-fit:cover;display:block}.photoTileBar{position:absolute;left:0;right:0;bottom:0;padding:9px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;display:flex;justify-content:space-between;align-items:end;font-size:12px;font-weight:700}.photoTileBar button{border:0;border-radius:50%;width:28px;height:28px;background:rgba(255,255,255,.9);color:#111;font-size:18px;cursor:pointer}.mainBadge{position:absolute;top:9px;left:9px;background:#fff;color:#6d28d9;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:900}.photoEmpty{grid-column:1/-1;padding:28px;text-align:center;border:1px dashed #cfc8e8;border-radius:18px;color:#777}.publicGalleryMain{position:relative;aspect-ratio:4/5;max-height:620px;border-radius:24px;overflow:hidden;background:#f4f3fa}.publicGalleryPhoto{width:100%;height:100%;object-fit:cover;display:block}.galleryArrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.88);font-size:30px;cursor:pointer}.galleryArrow.left{left:14px}.galleryArrow.right{right:14px}.galleryDots{display:flex;justify-content:center;gap:7px;padding-top:12px}.galleryDot{width:8px;height:8px;border:0;border-radius:50%;background:#d4d0df;cursor:pointer}.galleryDot.active{background:#7c3aed;width:22px;border-radius:9px}.publicProfileCard{overflow:hidden}@media(max-width:700px){.multiPhotoHead{align-items:flex-start;flex-direction:column}.photoGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`;document.head.appendChild(st)}
 const profileComplete=u=>!!(u?.name&&u?.age&&u?.city&&u?.college&&u?.course&&u?.bio&&arr(u?.interests).length&&u?.mode&&u?.gender&&u?.match_preference);
 function toast(x){alert(x)}function hasPass(u=user){return !!(u?.call_pass_until&&new Date(u.call_pass_until)>new Date())}
-function save(u,t){user=u;token=t;localStorage.setItem('vm_user',JSON.stringify(u));localStorage.setItem('vm_token',t);updateHeader();connect();show('app');render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}
+function save(u,t){
+  user=u;
+  token=t;
+
+  localStorage.setItem('vm_user',JSON.stringify(u));
+  localStorage.setItem('vm_token',t);
+
+  updateHeader();
+  connect();
+  show('app');
+
+  loadNotifications();
+
+  render('home').then(()=>{
+    if(!profileComplete(user))openOnboarding(true);
+  });
+}
 function show(id){$('auth').classList.toggle('hidden',id!=='auth');$('app').classList.toggle('hidden',id!=='app')}
 function updateHeader(){if($('me'))$('me').textContent=user?`Hi, ${user.name}${user.is_guest?' · Guest':''}`:'';if($('adminNav'))$('adminNav').classList.toggle('hidden',user?.role!=='admin')}
+function notificationIcon(type){
+  return ({
+    like:'❤️',
+    match:'💞',
+    message:'💬',
+    super_like:'⭐',
+    community:'👥',
+    event:'📅',
+    boost:'🚀',
+    system:'✨'
+  })[type]||'🔔';
+}
+
+function notificationTime(value){
+  if(!value)return '';
+  const d=new Date(value);
+  const diff=Math.max(0,Date.now()-d.getTime());
+  const mins=Math.floor(diff/60000);
+  if(mins<1)return 'Just now';
+  if(mins<60)return `${mins}m ago`;
+  const hours=Math.floor(mins/60);
+  if(hours<24)return `${hours}h ago`;
+  const days=Math.floor(hours/24);
+  if(days<7)return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function renderNotifications(){
+  const list=$('notificationsList');
+  const badge=$('notificationBadge');
+
+  if(!list)return;
+
+  const unread=notifications.filter(n=>!n.read_at).length;
+
+  if(badge){
+    badge.textContent=unread>99?'99+':String(unread);
+    badge.classList.toggle('hidden',unread===0);
+  }
+
+  if(!notifications.length){
+    list.innerHTML=`
+      <div class="notificationEmpty">
+        <div>🔔</div>
+        <b>No notifications yet</b>
+        <span>You're all caught up.</span>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML=notifications.map(n=>{
+    const avatar=n.actor_avatar
+      ? `<img class="notificationAvatar" src="${esc(n.actor_avatar)}" alt="">`
+      : `<div class="notificationAvatar">${notificationIcon(n.type)}</div>`;
+
+    return `
+      <div class="notificationItem ${n.read_at?'':'unread'}">
+        ${avatar}
+        <div class="notificationContent">
+          <div class="notificationTitle">${esc(n.title)}</div>
+          ${n.body?`<div class="notificationBody">${esc(n.body)}</div>`:''}
+          <div class="notificationTime">${notificationTime(n.created_at)}</div>
+        </div>
+        ${n.read_at?'':'<span class="notificationDot"></span>'}
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadNotifications(){
+  if(!token||!user)return;
+
+  try{
+    notifications=await api('/api/notifications');
+    renderNotifications();
+  }catch(e){
+    console.error('Notification load failed:',e);
+  }
+}
+
+async function markNotificationsRead(){
+  if(!token)return;
+
+  try{
+    await api('/api/notifications/read',{method:'POST'});
+    notifications=notifications.map(n=>({...n,read_at:n.read_at||new Date().toISOString()}));
+    renderNotifications();
+  }catch(e){
+    console.error('Notification read failed:',e);
+  }
+}
+
+function addLiveNotification(n){
+  if(!n)return;
+
+  notifications=[n,...notifications.filter(x=>Number(x.id)!==Number(n.id))].slice(0,50);
+  renderNotifications();
+
+  if(n.title)toast(n.title);
+}
+
+$('notificationsBtn')?.addEventListener('click',async e=>{
+  e.stopPropagation();
+
+  if(!user||!token)return;
+
+  notificationsOpen=!notificationsOpen;
+  $('notificationsPanel')?.classList.toggle('hidden',!notificationsOpen);
+
+  if(notificationsOpen){
+    await loadNotifications();
+  }
+});
+
+$('notificationsRead')?.addEventListener('click',async e=>{
+  e.stopPropagation();
+  await markNotificationsRead();
+});
+
+document.addEventListener('click',e=>{
+  const panel=$('notificationsPanel');
+  const btn=$('notificationsBtn');
+
+  if(notificationsOpen &&
+     panel &&
+     !panel.contains(e.target) &&
+     btn &&
+     !btn.contains(e.target)){
+    notificationsOpen=false;
+    panel.classList.add('hidden');
+  }
+});
 let registering=true;
 $('form').onsubmit=async e=>{e.preventDefault();try{const body=registering?{name:$('name').value,email:$('email').value,password:$('password').value,age:Number($('age').value)||null,city:$('city').value,gender:$('gender').value,matchPreference:$('matchPreference').value,mode:$('mode').value}:{email:$('email').value,password:$('password').value};const d=await api(registering?'/api/auth/register':'/api/auth/login',{method:'POST',body});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
 $('guestBtn').onclick=async()=>{try{const d=await api('/api/auth/guest',{method:'POST'});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
@@ -975,7 +1315,14 @@ async function buyCallPass(){try{const o=await api('/api/call-pass/order',{metho
 async function buyVip(){try{const o=await api('/api/vip/order',{method:'POST'});await loadRazorpay();const checkout=new Razorpay({key:o.keyId,amount:o.amount,currency:'INR',name:'VibeMeet',description:'VibeMeet VIP · 30 days',order_id:o.orderId,prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},modal:{ondismiss:()=>toast('Payment cancelled')},handler:async r=>{try{await api('/api/payments/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});user=await api('/api/me');toast('💎 VIP activated — Likes You is now unlocked');renderMatches('likes')}catch(e){toast(e.message)}}});checkout.open()}catch(e){toast(e.message)}}
 function loadRazorpay(){return new Promise((resolve,reject)=>{if(window.Razorpay)return resolve();const s=document.createElement('script');s.src='https://checkout.razorpay.com/v1/checkout.js';s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 
-function connect(){if(socket)socket.disconnect();socket=io({auth:{token}});socket.on('connect_error',e=>{if(e.message==='auth failed'){localStorage.clear();location.reload()}});socket.on('account:banned',()=>{toast('Your account has been banned.');localStorage.clear();location.reload()});socket.on('new:match',()=>toast('💞 You have a new match!'));socket.on('room:message',appendLive);socket.on('group:message',appendLive);socket.on('dm:message',m=>{appendLive(m);if(activePerson&&Number(m.sender_id)!==Number(user.id)&&Number(m.sender_id)===Number(activePerson.id)){markDmRead()}});socket.on('dm:read',({messageIds=[]}={})=>messageIds.forEach(markMessageSeen));socket.on('dm:reaction',({messageId,reactions=[]}={})=>updateMessageReactions(messageId,reactions));socket.on('dm:typing',({userId,typing})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){const el=document.querySelector('#typingIndicator');if(el)el.textContent=typing?`${activePerson.name} is typing…`:'';}});socket.on('presence:update',({userId,status})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){activePerson.status=status;const el=document.querySelector('.chatPresence');if(el)el.innerHTML=presenceHtml(status)+'<small> · private chat</small>';}});socket.on('call:offer',onCallOffer);socket.on('call:answer',async({answer})=>{if(pc)await pc.setRemoteDescription(answer)});socket.on('call:ice',async({candidate})=>{if(candidate&&pc)await pc.addIceCandidate(candidate).catch(()=>pendingIce.push(candidate))});socket.on('call:end',()=>{toast('Call ended');endCall(false)});socket.on('call:blocked',({reason})=>{toast(reason);endCall(false)})}
+function connect(){if(socket)socket.disconnect();socket=io({auth:{token}});socket.on('connect_error',e=>{if(e.message==='auth failed'){localStorage.clear();location.reload()}});socket.on('account:banned',()=>{toast('Your account has been banned.');localStorage.clear();location.reload()});socket.on('new:match',()=>{
+  toast('💞 You have a new match!');
+  loadNotifications();
+});
+
+socket.on('notification:new',n=>{
+  addLiveNotification(n);
+});socket.on('room:message',appendLive);socket.on('group:message',appendLive);socket.on('dm:message',m=>{appendLive(m);if(activePerson&&Number(m.sender_id)!==Number(user.id)&&Number(m.sender_id)===Number(activePerson.id)){markDmRead()}});socket.on('dm:read',({messageIds=[]}={})=>messageIds.forEach(markMessageSeen));socket.on('dm:reaction',({messageId,reactions=[]}={})=>updateMessageReactions(messageId,reactions));socket.on('dm:typing',({userId,typing})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){const el=document.querySelector('#typingIndicator');if(el)el.textContent=typing?`${activePerson.name} is typing…`:'';}});socket.on('presence:update',({userId,status})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){activePerson.status=status;const el=document.querySelector('.chatPresence');if(el)el.innerHTML=presenceHtml(status)+'<small> · private chat</small>';}});socket.on('call:offer',onCallOffer);socket.on('call:answer',async({answer})=>{if(pc)await pc.setRemoteDescription(answer)});socket.on('call:ice',async({candidate})=>{if(candidate&&pc)await pc.addIceCandidate(candidate).catch(()=>pendingIce.push(candidate))});socket.on('call:end',()=>{toast('Call ended');endCall(false)});socket.on('call:blocked',({reason})=>{toast(reason);endCall(false)})}
 async function rtcConfig(){try{const c=await api('/api/config');const urls=String(c.turnUrls||'').split(',').map(x=>x.trim()).filter(Boolean);return {iceServers:[{urls:'stun:stun.l.google.com:19302'},...(urls.length?[{urls,username:c.turnUsername,credential:c.turnCredential}]:[])]}}catch{return {iceServers:[{urls:'stun:stun.l.google.com:19302'}]}}}
 async function createPeer(peerId){pc=new RTCPeerConnection(await rtcConfig());pc.onicecandidate=e=>{if(e.candidate)socket.emit('call:ice',{to:peerId,candidate:e.candidate})};pc.ontrack=e=>{const v=$('remoteVideo');if(v)v.srcObject=e.streams[0]};pc.onconnectionstatechange=()=>{if(pc?.connectionState==='connected')setCallStatus('Connected');if(['failed','closed'].includes(pc?.connectionState))endCall(false)};return pc}
 async function startCall(id,mode='video'){try{currentCallPeer=id;callMode=mode;await showCallUI(false);setCallStatus('Requesting camera/microphone…');localStream=await navigator.mediaDevices.getUserMedia(mode==='video'?{video:true,audio:true}:{video:false,audio:true});$('localVideo').srcObject=localStream;await createPeer(id);localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));const offer=await pc.createOffer();await pc.setLocalDescription(offer);setCallStatus('Calling…');socket.emit('call:offer',{to:id,offer,type:mode})}catch(e){toast('Could not start call: '+e.message);endCall(false)}}
@@ -993,6 +1340,12 @@ document.head.insertAdjacentHTML('beforeend',`<style>.chatImagePreview{display:b
 .vipLikesIcon{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,#eaf7ff,#f8eaff);flex:0 0 auto}
 .vipLikesUpsell h3{margin:4px 0 6px}
 .vipLikesUpsell p{margin:0 0 12px}
-</style><style>.chatImageBtn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:14px;cursor:pointer;background:rgba(91,77,230,.09);font-size:19px;flex:0 0 44px}.chatImageBtn:hover{transform:translateY(-1px);background:rgba(91,77,230,.15)}</style><style>.presenceBadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;margin-top:5px}.presenceBadge i{width:8px;height:8px;border-radius:50%;display:inline-block;background:#a1a1aa}.presenceBadge.isOnline i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.12)}.presenceBadge.isOnline{color:#15803d}.presenceBadge.isOffline{color:#71717a}.matchMeta{display:flex;align-items:center;gap:7px;margin-top:5px}.matchMeta .presenceBadge{margin-top:0}.chatPresence{display:flex;align-items:center;gap:5px}.chatPresence .presenceBadge{margin-top:3px}</style>`);if(token&&user){show('app');updateHeader();connect();render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}else show('auth');
+</style><style>.chatImageBtn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:14px;cursor:pointer;background:rgba(91,77,230,.09);font-size:19px;flex:0 0 44px}.chatImageBtn:hover{transform:translateY(-1px);background:rgba(91,77,230,.15)}</style><style>.presenceBadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;margin-top:5px}.presenceBadge i{width:8px;height:8px;border-radius:50%;display:inline-block;background:#a1a1aa}.presenceBadge.isOnline i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.12)}.presenceBadge.isOnline{color:#15803d}.presenceBadge.isOffline{color:#71717a}.matchMeta{display:flex;align-items:center;gap:7px;margin-top:5px}.matchMeta .presenceBadge{margin-top:0}.chatPresence{display:flex;align-items:center;gap:5px}.chatPresence .presenceBadge{margin-top:3px}</style>`);if(token&&user){
+  show('app');
+  updateHeader();
+  connect();
+  loadNotifications();
+
+  render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}else show('auth');
 
 if(!document.getElementById('vibeMessageEnhancements')){const st=document.createElement('style');st.id='vibeMessageEnhancements';st.textContent=`.msgTools{display:flex;gap:5px;margin-top:7px;opacity:.72}.msgTools button{border:0;background:rgba(120,120,150,.09);border-radius:999px;padding:4px 8px;font-size:11px;cursor:pointer}.msgTools button:hover{transform:translateY(-1px);opacity:1}.msgReactions{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.reactionPill{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:3px 8px;font-size:12px;cursor:pointer}.reactionPill.mine{box-shadow:0 0 0 2px rgba(91,77,230,.16)}.msgReplyQuote{display:flex;flex-direction:column;text-align:left;width:100%;border:0;border-left:3px solid #6b5cff;background:rgba(91,77,230,.07);padding:7px 9px;border-radius:8px;margin:0 0 7px;cursor:pointer}.msgReplyQuote span{font-size:11px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.replyBar{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px;margin-bottom:8px;background:rgba(91,77,230,.06)}.replyBar div{display:flex;flex-direction:column;min-width:0}.replyBar span{font-size:11px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70vw}.replyBar button{border:0;background:transparent;font-size:20px;cursor:pointer}.msgFlash{animation:vibeMsgFlash 1.2s ease}@keyframes vibeMsgFlash{50%{box-shadow:0 0 0 4px rgba(91,77,230,.25)}}`;document.head.appendChild(st)}
