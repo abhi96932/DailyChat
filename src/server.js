@@ -448,6 +448,7 @@ app.get("/api/likes",auth,async(req,res)=>{
   res.json({
     incoming: incomingRows.slice(0, visibleCount),
     incomingCount: incomingRows.length,
+    revealedCount: paidExtraLikes,
     lockedCount: Math.max(0, incomingRows.length - visibleCount),
     outgoing: outgoing.rows.filter(x => !x.matched),
     vipActive
