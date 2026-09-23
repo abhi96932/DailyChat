@@ -1,0 +1,246 @@
+CREATE TABLE IF NOT EXISTS users (
+ id BIGSERIAL PRIMARY KEY,
+ name VARCHAR(40) NOT NULL,
+ email VARCHAR(255) UNIQUE NOT NULL,
+ password_hash TEXT NOT NULL,
+ avatar TEXT,
+ bio VARCHAR(280) DEFAULT '',
+ role VARCHAR(20) NOT NULL DEFAULT 'user',
+ verified BOOLEAN NOT NULL DEFAULT FALSE,
+ vip_until TIMESTAMPTZ,
+ call_pass_until TIMESTAMPTZ,
+ gender VARCHAR(20) DEFAULT 'prefer_not_to_say',
+ match_preference VARCHAR(20) DEFAULT 'any',
+ is_guest BOOLEAN NOT NULL DEFAULT FALSE,
+ guest_expires_at TIMESTAMPTZ,
+ status VARCHAR(20) NOT NULL DEFAULT 'offline',
+ age INTEGER,
+ city VARCHAR(80) DEFAULT '',
+ college VARCHAR(120) DEFAULT '',
+ course VARCHAR(100) DEFAULT '',
+ relationship_intent VARCHAR(40) DEFAULT 'open_to_connections',
+ interests TEXT[] NOT NULL DEFAULT '{}',
+ languages TEXT[] NOT NULL DEFAULT '{}',
+ mode VARCHAR(20) NOT NULL DEFAULT 'dating',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS call_pass_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20) DEFAULT 'prefer_not_to_say';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS match_preference VARCHAR(20) DEFAULT 'any';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS guest_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS age INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(80) DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS college VARCHAR(120) DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS course VARCHAR(100) DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS relationship_intent VARCHAR(40) DEFAULT 'open_to_connections';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS interests TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS languages TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mode VARCHAR(20) NOT NULL DEFAULT 'dating';
+CREATE INDEX IF NOT EXISTS idx_users_discovery ON users(status,gender,mode);
+
+CREATE TABLE IF NOT EXISTS rooms (id BIGSERIAL PRIMARY KEY,name VARCHAR(80) UNIQUE NOT NULL,slug VARCHAR(100) UNIQUE NOT NULL,language VARCHAR(40) NOT NULL,flag VARCHAR(10) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS room_members (room_id BIGINT REFERENCES rooms(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(room_id,user_id));
+CREATE TABLE IF NOT EXISTS groups (id BIGSERIAL PRIMARY KEY,name VARCHAR(100) UNIQUE NOT NULL,slug VARCHAR(120) UNIQUE NOT NULL,category VARCHAR(60) NOT NULL,description VARCHAR(300) DEFAULT '',icon VARCHAR(20) DEFAULT '👥',city VARCHAR(80) DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS group_members (group_id BIGINT REFERENCES groups(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(group_id,user_id));
+CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+CREATE TABLE IF NOT EXISTS events (id BIGSERIAL PRIMARY KEY,group_id BIGINT REFERENCES groups(id) ON DELETE CASCADE,creator_id BIGINT REFERENCES users(id) ON DELETE CASCADE,title VARCHAR(120) NOT NULL,description VARCHAR(500) DEFAULT '',starts_at TIMESTAMPTZ NOT NULL,location VARCHAR(150) DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS event_members (event_id BIGINT REFERENCES events(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(event_id,user_id));
+
+CREATE TABLE IF NOT EXISTS messages (id BIGSERIAL PRIMARY KEY,sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE,room_id BIGINT REFERENCES rooms(id) ON DELETE CASCADE,receiver_id BIGINT REFERENCES users(id) ON DELETE CASCADE,group_id BIGINT REFERENCES groups(id) ON DELETE CASCADE,body TEXT NOT NULL CHECK(length(body)<=2000),attachment_data TEXT,attachment_mime VARCHAR(50),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_data TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_mime VARCHAR(50);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS group_id BIGINT REFERENCES groups(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room_id,created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_dm ON messages(sender_id,receiver_id,created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id,created_at);
+
+CREATE TABLE IF NOT EXISTS swipes (id BIGSERIAL PRIMARY KEY,swiper_id BIGINT REFERENCES users(id) ON DELETE CASCADE,target_id BIGINT REFERENCES users(id) ON DELETE CASCADE,direction VARCHAR(10) NOT NULL CHECK(direction IN ('like','pass')),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(swiper_id,target_id));
+CREATE TABLE IF NOT EXISTS matches (id BIGSERIAL PRIMARY KEY,user1_id BIGINT REFERENCES users(id) ON DELETE CASCADE,user2_id BIGINT REFERENCES users(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(user1_id,user2_id),CHECK(user1_id<user2_id));
+CREATE INDEX IF NOT EXISTS idx_swipes_user ON swipes(swiper_id,direction);
+CREATE INDEX IF NOT EXISTS idx_matches_users ON matches(user1_id,user2_id);
+
+CREATE TABLE IF NOT EXISTS compatibility_questions (id BIGSERIAL PRIMARY KEY,question TEXT NOT NULL,option_a VARCHAR(120) NOT NULL,option_b VARCHAR(120) NOT NULL,category VARCHAR(50) NOT NULL DEFAULT 'lifestyle');
+CREATE TABLE IF NOT EXISTS compatibility_answers (user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,question_id BIGINT REFERENCES compatibility_questions(id) ON DELETE CASCADE,answer VARCHAR(120) NOT NULL,PRIMARY KEY(user_id,question_id));
+
+CREATE TABLE IF NOT EXISTS reports (id BIGSERIAL PRIMARY KEY,reporter_id BIGINT REFERENCES users(id) ON DELETE CASCADE,reported_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,message_id BIGINT REFERENCES messages(id) ON DELETE SET NULL,reason VARCHAR(100) NOT NULL,details VARCHAR(1000) DEFAULT '',status VARCHAR(20) NOT NULL DEFAULT 'open',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS blocks (blocker_id BIGINT REFERENCES users(id) ON DELETE CASCADE,blocked_id BIGINT REFERENCES users(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(blocker_id,blocked_id));
+CREATE TABLE IF NOT EXISTS subscriptions (id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,provider VARCHAR(30) NOT NULL DEFAULT 'razorpay',product VARCHAR(30) NOT NULL DEFAULT 'vip',order_id VARCHAR(100),payment_id VARCHAR(100),status VARCHAR(30) NOT NULL DEFAULT 'created',amount_paise INTEGER NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS product VARCHAR(30) NOT NULL DEFAULT 'vip';
+
+
+-- VibeMeet Community + Uttarakhand Travel layer
+CREATE TABLE IF NOT EXISTS notifications (
+ id BIGSERIAL PRIMARY KEY,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+ type VARCHAR(40) NOT NULL,
+ title VARCHAR(180) NOT NULL,
+ body VARCHAR(500) DEFAULT '',
+ read_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_time ON notifications(user_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS destinations (
+ id BIGSERIAL PRIMARY KEY,
+ name VARCHAR(120) NOT NULL UNIQUE,
+ slug VARCHAR(140) NOT NULL UNIQUE,
+ region VARCHAR(30) NOT NULL DEFAULT 'Uttarakhand',
+ district VARCHAR(80) DEFAULT '',
+ description VARCHAR(500) DEFAULT '',
+ icon VARCHAR(10) DEFAULT '🏔️',
+ difficulty VARCHAR(30) DEFAULT 'Easy',
+ base_transport INTEGER NOT NULL DEFAULT 1000,
+ stay_per_night INTEGER NOT NULL DEFAULT 500,
+ food_per_day INTEGER NOT NULL DEFAULT 350,
+ local_transport INTEGER NOT NULL DEFAULT 250,
+ activities INTEGER NOT NULL DEFAULT 200,
+ recommended_months SMALLINT[] NOT NULL DEFAULT '{}',
+ route_stops JSONB NOT NULL DEFAULT '[]'::jsonb,
+ tags TEXT[] NOT NULL DEFAULT '{}',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_destinations_region ON destinations(region);
+
+CREATE TABLE IF NOT EXISTS travel_profiles (
+ user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ styles TEXT[] NOT NULL DEFAULT '{}',
+ pace VARCHAR(20) NOT NULL DEFAULT 'balanced',
+ budget_style VARCHAR(20) NOT NULL DEFAULT 'balanced',
+ interests TEXT[] NOT NULL DEFAULT '{}',
+ emergency_name VARCHAR(80) DEFAULT '',
+ emergency_phone VARCHAR(30) DEFAULT '',
+ emergency_relation VARCHAR(40) DEFAULT '',
+ home_base VARCHAR(100) DEFAULT '',
+ bio VARCHAR(500) DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS trips (
+ id BIGSERIAL PRIMARY KEY,
+ host_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ destination_id BIGINT REFERENCES destinations(id) ON DELETE SET NULL,
+ title VARCHAR(160) NOT NULL,
+ description VARCHAR(1000) DEFAULT '',
+ start_date DATE NOT NULL,
+ end_date DATE NOT NULL,
+ start_point VARCHAR(120) NOT NULL,
+ max_members INTEGER NOT NULL DEFAULT 4 CHECK(max_members BETWEEN 1 AND 20),
+ travel_style VARCHAR(20) NOT NULL DEFAULT 'balanced',
+ pace VARCHAR(20) NOT NULL DEFAULT 'balanced',
+ budget_min INTEGER NOT NULL DEFAULT 0,
+ budget_max INTEGER NOT NULL DEFAULT 0,
+ budget_breakdown JSONB NOT NULL DEFAULT '{}'::jsonb,
+ route JSONB NOT NULL DEFAULT '[]'::jsonb,
+ status VARCHAR(20) NOT NULL DEFAULT 'open',
+ visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ CHECK(end_date>=start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_trips_destination_dates ON trips(destination_id,start_date,end_date,status);
+CREATE INDEX IF NOT EXISTS idx_trips_host ON trips(host_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS trip_members (
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ role VARCHAR(20) NOT NULL DEFAULT 'member',
+ joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ status VARCHAR(20) NOT NULL DEFAULT 'active',
+ PRIMARY KEY(trip_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id,status);
+
+CREATE TABLE IF NOT EXISTS trip_join_requests (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ message VARCHAR(500) DEFAULT '',
+ status VARCHAR(20) NOT NULL DEFAULT 'pending',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ UNIQUE(trip_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trip_requests_trip ON trip_join_requests(trip_id,status,created_at);
+
+CREATE TABLE IF NOT EXISTS trip_messages (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ body VARCHAR(2000) NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trip_messages_trip ON trip_messages(trip_id,created_at);
+
+CREATE TABLE IF NOT EXISTS trip_checklist (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ title VARCHAR(160) NOT NULL,
+ assigned_to BIGINT REFERENCES users(id) ON DELETE SET NULL,
+ done BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trip_checklist_trip ON trip_checklist(trip_id);
+
+CREATE TABLE IF NOT EXISTS trip_expenses (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ paid_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+ title VARCHAR(120) NOT NULL,
+ amount INTEGER NOT NULL CHECK(amount>=0),
+ category VARCHAR(40) NOT NULL DEFAULT 'other',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trip_expenses_trip ON trip_expenses(trip_id);
+
+CREATE TABLE IF NOT EXISTS trip_expense_members (
+ expense_id BIGINT REFERENCES trip_expenses(id) ON DELETE CASCADE,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ share INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(expense_id,user_id)
+);
+
+CREATE TABLE IF NOT EXISTS travel_reviews (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ reviewer_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ reviewed_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+ comment VARCHAR(500) DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ UNIQUE(trip_id,reviewer_id,reviewed_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS trip_checkins (
+ id BIGSERIAL PRIMARY KEY,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ status VARCHAR(20) NOT NULL DEFAULT 'safe',
+ note VARCHAR(300) DEFAULT '',
+ latitude DOUBLE PRECISION,
+ longitude DOUBLE PRECISION,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trip_checkins_trip ON trip_checkins(trip_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS saved_trips (
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ trip_id BIGINT REFERENCES trips(id) ON DELETE CASCADE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ PRIMARY KEY(user_id,trip_id)
+);
+
+CREATE TABLE IF NOT EXISTS going_posts (
+ id BIGSERIAL PRIMARY KEY,
+ user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+ destination_id BIGINT REFERENCES destinations(id) ON DELETE SET NULL,
+ text VARCHAR(500) NOT NULL,
+ trip_date DATE,
+ start_point VARCHAR(120) DEFAULT '',
+ budget_min INTEGER DEFAULT 0,
+ budget_max INTEGER DEFAULT 0,
+ interested_count INTEGER NOT NULL DEFAULT 0,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_going_posts_date ON going_posts(trip_date,created_at DESC);
