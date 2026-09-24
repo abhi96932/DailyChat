@@ -47,3 +47,201 @@ aside button.active{background:linear-gradient(135deg,#f0e8ff,#ffeaf7)!important
 .primary,.btn{background:linear-gradient(135deg,var(--vm-purple),var(--vm-pink))!important;border:0!important;box-shadow:0 10px 24px rgba(109,50,184,.22)}
 .secondary{background:#fff!important;border:1px solid var(--vm-border)!important;box-shadow:0 5px 15px rgba(31,17,54,.04)}
 @media(max-width:800px){aside{box-shadow:20px 0 60px rgba(30,16,50,.18)}}
+
+/* =========================================================
+   VIBEMEET LAUNCH POLISH v3 — premium social/travel UI
+   ========================================================= */
+:root{
+  --launch-bg:#f6f4fb;
+  --launch-surface:#ffffff;
+  --launch-ink:#16152a;
+  --launch-muted:#77748b;
+  --launch-purple:#6c35d9;
+  --launch-violet:#4f46e5;
+  --launch-pink:#e94f9f;
+  --launch-cyan:#16b8d4;
+  --launch-border:#e9e5f2;
+  --launch-shadow:0 18px 55px rgba(34,22,69,.09);
+}
+
+body{
+  background:
+    radial-gradient(circle at 7% 0%,rgba(108,53,217,.10),transparent 24%),
+    radial-gradient(circle at 100% 8%,rgba(233,79,159,.08),transparent 22%),
+    linear-gradient(180deg,#fbfaff 0%,var(--launch-bg) 55%,#f7f8fc 100%);
+  color:var(--launch-ink);
+}
+
+/* Stronger app shell — fixes the washed-out sidebar in the current build. */
+#app{background:transparent}
+#app>aside{
+  width:256px;
+  padding:18px 13px;
+  background:linear-gradient(180deg,#111329 0%,#1a1840 48%,#25164b 100%) !important;
+  color:#f6f4ff;
+  border-right:1px solid rgba(255,255,255,.08) !important;
+  box-shadow:14px 0 45px rgba(28,18,57,.12);
+}
+#app>aside .brand{color:#fff!important;padding:7px 11px 20px}
+#app>aside .brand span{filter:drop-shadow(0 5px 12px rgba(233,79,159,.35))}
+#app>aside .navlabel{color:#9695b6;padding:15px 11px 5px;font-size:9px}
+#app>aside button{
+  color:#d9d8ed;
+  padding:11px 13px;
+  border:1px solid transparent;
+  font-weight:760;
+}
+#app>aside button:hover{background:rgba(255,255,255,.07);color:#fff;transform:translateX(2px)}
+#app>aside button.active{
+  background:linear-gradient(100deg,rgba(111,71,229,.34),rgba(233,79,159,.20)) !important;
+  color:#fff !important;
+  border-color:rgba(255,255,255,.10);
+  box-shadow:0 9px 24px rgba(0,0,0,.14),inset 3px 0 0 #e94f9f;
+}
+#app>aside .logout{background:rgba(255,255,255,.07)!important;color:#f1effc!important;border:1px solid rgba(255,255,255,.07)!important}
+
+main{background:transparent}
+header{
+  height:82px;
+  padding:13px 28px;
+  background:rgba(251,250,255,.84)!important;
+  border-bottom:1px solid rgba(224,220,236,.78)!important;
+  box-shadow:0 8px 30px rgba(30,23,60,.04);
+}
+header input{
+  height:48px;
+  border-radius:17px;
+  background:rgba(255,255,255,.82);
+  border-color:#e4e0ed;
+  box-shadow:0 5px 18px rgba(35,22,70,.035);
+}
+header input::placeholder{color:#9894a7}
+#me{color:#48445e}
+
+.pagepad{max-width:1440px;padding:30px 32px 44px}
+.card,.stat,.travelCard,.discoverMini,.postCard{
+  border-color:var(--launch-border)!important;
+  box-shadow:var(--launch-shadow);
+}
+.card{border-radius:24px}
+.card:hover,.travelCard:hover,.discoverMini:hover{box-shadow:0 22px 65px rgba(34,22,69,.11)}
+
+.primary,.btn{
+  min-height:44px;
+  border-radius:14px;
+  background:linear-gradient(135deg,var(--launch-purple),var(--launch-pink))!important;
+  box-shadow:0 12px 26px rgba(108,53,217,.22)!important;
+}
+.primary:hover,.btn:hover{box-shadow:0 15px 32px rgba(108,53,217,.28)!important}
+.secondary{
+  min-height:44px;
+  border-radius:14px;
+  background:#fff!important;
+  border:1px solid #e4dfec!important;
+  color:#38334b!important;
+}
+
+/* Hero system */
+.hero,.compactHero,.travelHero,.feedHero{
+  border-radius:30px;
+  box-shadow:0 24px 70px rgba(47,24,94,.15);
+}
+.hero{background:linear-gradient(135deg,#15162e 0%,#4d32a6 48%,#e94f9f 100%)}
+.compactHero{background:linear-gradient(135deg,#15162e 0%,#5131a4 50%,#e94f9f 100%)}
+
+/* Better community cards */
+.groupCardNew{border-radius:24px!important;box-shadow:0 14px 40px rgba(35,20,65,.07)!important}
+.groupCover{min-height:150px!important;background:linear-gradient(135deg,#19152f,#6b3bd0 58%,#e94f9f)!important}
+.groupIcon{box-shadow:0 14px 28px rgba(20,10,50,.22)!important}
+
+/* Match/discovery cards feel like a real dating product */
+.featuredDiscover{border-radius:30px!important;box-shadow:0 25px 75px rgba(30,20,65,.11)!important}
+.discoverMini{transition:transform .2s ease,box-shadow .2s ease}
+.discoverMini:hover{transform:translateY(-4px)}
+.swipeButton{transition:transform .18s,box-shadow .18s,border-color .18s}
+.swipeButton:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(40,25,80,.10)}
+
+/* Notification / utility controls */
+.notificationBtn,#vmNotifyBtn{
+  width:46px!important;height:46px!important;min-height:46px!important;
+  border-radius:15px!important;
+  display:grid!important;place-items:center!important;
+  position:relative;
+  background:#fff!important;
+  border:1px solid #e6e1ee!important;
+  color:#4e4566!important;
+  box-shadow:0 8px 22px rgba(32,20,65,.06);
+}
+.notificationBadge{box-shadow:0 0 0 3px #fff}
+
+/* Landing page v3 */
+.vm-landing{
+  background:
+    radial-gradient(circle at 12% 8%,rgba(108,53,217,.22),transparent 27%),
+    radial-gradient(circle at 92% 10%,rgba(233,79,159,.18),transparent 28%),
+    radial-gradient(circle at 48% 100%,rgba(22,184,212,.13),transparent 35%),
+    #faf9ff;
+}
+.vm-nav{height:82px}
+.vm-logo-icon{background:linear-gradient(135deg,#6c35d9,#e94f9f);box-shadow:0 12px 32px rgba(108,53,217,.28)}
+.vm-login{border:1px solid #e7e1f0;background:rgba(255,255,255,.82);backdrop-filter:blur(12px)}
+.vm-title{font-size:clamp(52px,7vw,88px)}
+.vm-primary{background:linear-gradient(135deg,#6c35d9,#e94f9f);box-shadow:0 18px 40px rgba(108,53,217,.27)}
+.vm-secondary{border-color:#e6e1ee;background:rgba(255,255,255,.82)}
+.vm-card{box-shadow:0 35px 90px rgba(37,24,77,.22);border:1px solid rgba(255,255,255,.6)}
+.vm-feature{
+  border:1px solid #e9e3f2;
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(14px);
+  box-shadow:0 16px 45px rgba(35,22,70,.07);
+  border-radius:24px;
+  padding:24px;
+}
+.vm-feature-icon{box-shadow:0 10px 24px rgba(108,53,217,.12)}
+
+/* Auth */
+.vm-auth-screen{background:linear-gradient(135deg,#f8f6ff,#fff6fb 55%,#f3fbff)}
+.authbox{border:1px solid rgba(255,255,255,.95);box-shadow:0 35px 110px rgba(43,26,82,.16)}
+.authbox input,.authbox select{background:#fbfaff;border-color:#e4dfec}
+.authbox input:focus,.authbox select:focus{outline:3px solid rgba(108,53,217,.10);border-color:#a48ae9}
+
+/* Mobile app dock */
+.vm-mobile-dock{
+  display:none;
+  position:fixed;
+  z-index:120;
+  left:10px;right:10px;bottom:10px;
+  padding:8px;
+  border:1px solid rgba(255,255,255,.72);
+  background:rgba(255,255,255,.86);
+  backdrop-filter:blur(22px);
+  border-radius:22px;
+  box-shadow:0 18px 55px rgba(26,17,54,.18);
+  grid-template-columns:repeat(5,1fr);
+  gap:4px;
+}
+.vm-mobile-dock button{background:transparent;color:#77728a;padding:7px 4px;border-radius:15px;font-size:10px;font-weight:850}
+.vm-mobile-dock button span{display:block;font-size:19px;line-height:1.15;margin-bottom:2px}
+.vm-mobile-dock button.active{background:linear-gradient(135deg,#f1eaff,#ffeaf6);color:#5d2fb1}
+
+@media(max-width:900px){
+  #app>aside{left:-270px}
+  #app>aside.open{left:0}
+  header{height:72px;padding:10px 13px}
+  header input{height:45px}
+  .pagepad{padding:20px 16px 90px}
+  .vm-mobile-dock{display:grid}
+}
+@media(max-width:560px){
+  .pagepad{padding:14px 12px 92px}
+  .hero,.compactHero,.travelHero,.feedHero{border-radius:22px}
+  .compactHero{padding:23px 20px}
+  .compactHero h1{font-size:31px}
+  .title h2{font-size:25px}
+  .vm-title{font-size:52px;letter-spacing:-3px}
+  .vm-hero{padding-top:35px}
+  .vm-showcase{height:430px;transform:scale(.84);margin:-25px -35px}
+  .vm-card{width:255px;height:350px}
+  .vm-card-left{transform:translateX(-100px) rotate(-10deg) scale(.88)}
+  .vm-card-right{transform:translateX(100px) rotate(11deg) scale(.88)}
+}

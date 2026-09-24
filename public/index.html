@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#171329">
+<meta name="description" content="VibeMeet — dating, friendship, communities and travel for people who share your vibe.">
 <title>VibeMeet — Find Your Vibe</title>
 <link rel="icon" href="/logo.svg">
 <link rel="stylesheet" href="/style.css">
@@ -728,6 +730,14 @@ body{
 
   </main>
 
+  <nav class="vm-mobile-dock" aria-label="Quick navigation">
+    <button data-mobile-page="home"><span>⌂</span>Home</button>
+    <button data-mobile-page="matches"><span>💞</span>Matches</button>
+    <button data-mobile-page="groups"><span>👥</span>Community</button>
+    <button data-mobile-page="trips"><span>🧳</span>Trips</button>
+    <button data-mobile-page="profile"><span>◉</span>Profile</button>
+  </nav>
+
 </div>
 
 
@@ -779,6 +789,16 @@ body{
     setTimeout(function(){
       document.getElementById('guestBtn')?.click();
     },100);
+  });
+
+  // Mobile quick navigation mirrors the desktop sidebar.
+  document.querySelectorAll('[data-mobile-page]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const target=btn.dataset.mobilePage;
+      document.querySelectorAll('[data-mobile-page]').forEach(x=>x.classList.remove('active'));
+      btn.classList.add('active');
+      if(typeof window.render==='function') window.render(target);
+    });
   });
 
 })();
