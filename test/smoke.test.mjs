@@ -4,3 +4,6 @@ test("core safety/discovery endpoints are present",()=>{for(const x of ["/api/di
 test("production protections are configured",()=>{assert.match(server,/helmet\(/);assert.match(server,/HttpOnly/);assert.match(server,/SameSite=Lax/);assert.match(server,/Permissions-Policy/);});
 test("schema contains moderation and safety tables",()=>{assert.match(schema,/content_reports/);assert.match(schema,/trip_checkins/);assert.match(schema,/travel_profiles/);});
 test("mobile and media flows remain wired",()=>{assert.match(index,/data-mobile-page="community"/);assert.match(app,/chatImageInput/);assert.match(app,/getUserMedia/);});
+
+test("dating discovery is one-at-a-time and no public People directory remains",()=>{assert.match(app,/One person at a time/);assert.match(app,/async function renderExplore/);assert.doesNotMatch(index,/data-page="people"/);assert.doesNotMatch(app,/api\/people/);assert.match(app,/singleDiscoverCard/);});
+test("private messaging and calls require a mutual match",()=>{assert.match(server,/usersAreMatched/);assert.match(server,/You can message only mutual matches/);assert.match(server,/await usersAreMatched\(uid,id\)/);});
