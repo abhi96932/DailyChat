@@ -7,14 +7,114 @@ import helmet from "helmet";
 import {Server} from "socket.io";
 import Razorpay from "razorpay";
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import {q,pool} from "./db.js";
-import {ensureDatabase} from "./ensure-db.js";
 import {auth,optionalAuth,register,login,sign,verifyToken,guest} from "./auth.js";
 dotenv.config();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const app=express(),server=http.createServer(app); app.set("trust proxy",1);
 const io=new Server(server,{cors:{origin:process.env.CORS_ORIGIN||true,methods:["GET","POST"]}});
+const subscriptionsReady = q(`
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id TEXT UNIQUE NOT NULL,
+    payment_id TEXT,
+    amount_paise INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'created',
+    product TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+const featurePurchasesReady = q(`
+  CREATE TABLE IF NOT EXISTS feature_purchases (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    amount_paise INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'created',
+    order_id TEXT UNIQUE,
+    payment_id TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    used_at TIMESTAMP
+  )
+`);
+
+const superLikesReady = q(`
+  CREATE TABLE IF NOT EXISTS super_likes (
+    id SERIAL PRIMARY KEY,
+    sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+
+const boostsReady = q(`
+  CREATE TABLE IF NOT EXISTS profile_boosts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+  )
+`);
+const profilePhotosReady=q(`CREATE TABLE IF NOT EXISTS profile_photos (id SERIAL PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,data TEXT NOT NULL,mime TEXT NOT NULL,position INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(user_id,position))`).catch(e=>{console.error('profile_photos init failed',e);throw e});
+const notificationsReady=q(`CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  read_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+  );`);
+const premiumFeaturesReady=(async()=>{
+  await q("ALTER TABLE users ADD COLUMN IF NOT EXISTS incognito_enabled BOOLEAN NOT NULL DEFAULT FALSE");
+  await q("ALTER TABLE users ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ");
+  await q("ALTER TABLE users ADD COLUMN IF NOT EXISTS travel_city VARCHAR(80)");
+  await q("CREATE TABLE IF NOT EXISTS profile_views (id SERIAL PRIMARY KEY,viewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,viewed_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(viewer_id,viewed_id))");
+  await q("CREATE INDEX IF NOT EXISTS idx_profile_views_viewed ON profile_views(viewed_id,created_at DESC)");
+  await q("CREATE TABLE IF NOT EXISTS compliments (id SERIAL PRIMARY KEY,sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,body VARCHAR(150) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),read_at TIMESTAMPTZ)");
+  await q("CREATE INDEX IF NOT EXISTS idx_compliments_receiver ON compliments(receiver_id,created_at DESC)");
+})().catch(e=>{console.error('premium features init failed',e);throw e});
+const messagingFeaturesReady=(async()=>{await q("ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL");await q("ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ");await q("CREATE TABLE IF NOT EXISTS message_reactions (id SERIAL PRIMARY KEY,message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,emoji VARCHAR(16) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(message_id,user_id,emoji))");await q("CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)");await q("CREATE INDEX IF NOT EXISTS idx_messages_dm_unread ON messages(receiver_id,sender_id,read_at) WHERE receiver_id IS NOT NULL")})().catch(e=>{console.error('messaging features init failed',e);throw e});
 const buckets=new Map();
+async function createNotification(userId,actorId,type,title,body){
+  try{
+    await notificationsReady;
+
+    const r=await q(
+      `INSERT INTO notifications
+       (user_id,actor_id,type,title,body)
+       VALUES($1,$2,$3,$4,$5)
+       RETURNING id,actor_id,type,title,body,read_at,created_at`,
+      [userId,actorId,type,title,body||null]
+    );
+
+    const n=r.rows[0];
+
+    let actor={rows:[]};
+
+    if(actorId){
+      actor=await q(
+        `SELECT name,avatar
+         FROM users
+         WHERE id=$1`,
+        [actorId]
+      );
+    }
+
+    io.to(`user:${userId}`).emit('notification:new',{
+      ...n,
+      actor_name:actor.rows[0]?.name||null,
+      actor_avatar:actor.rows[0]?.avatar||null
+    });
+
+  }catch(e){
+    console.error("Notification error:",e.message);
+  }
+}
 function rateLimit({windowMs=60_000,max=120,keyFn=req=>req.ip}={}){return(req,res,next)=>{const key=keyFn(req),now=Date.now();let b=buckets.get(key);if(!b||now-b.start>windowMs)b={start:now,count:0};b.count++;buckets.set(key,b);if(b.count>max)return res.status(429).json({error:"Too many requests. Please try again shortly."});next()}}
 const authLimiter=rateLimit({windowMs:15*60_000,max:25}),apiLimiter=rateLimit({windowMs:60_000,max:240}),messageLimiter=rateLimit({windowMs:10_000,max:30,keyFn:req=>`${req.ip}:${req.user?.id||"anon"}`});
 app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
@@ -22,10 +122,39 @@ app.post("/api/vip/webhook",express.raw({type:"application/json",limit:"1mb"}),a
 app.use(express.json({limit:"7mb"}));app.use(apiLimiter);app.use(express.static(path.join(__dirname,"../public")));
 app.get("/health",(_req,res)=>res.json({ok:true,service:"vibemeet",time:new Date().toISOString()}));
 app.get("/api/config",(_req,res)=>res.json({turnUrls:process.env.TURN_URLS||"",turnUsername:process.env.TURN_USERNAME||"",turnCredential:process.env.TURN_CREDENTIAL||""}));
-const userSelect=`id,name,email,avatar,bio,role,verified,vip_until,call_pass_until,status,gender,match_preference,is_guest,guest_expires_at,age,city,college,course,relationship_intent,interests,languages,mode`;
+const userSelect=`id,name,email,avatar,bio,role,verified,vip_until,call_pass_until,status,gender,match_preference,is_guest,guest_expires_at,age,city,college,course,relationship_intent,interests,languages,mode,incognito_enabled,snoozed_until,travel_city`;
 app.post("/api/auth/register",authLimiter,async(req,res)=>{try{const {name,email,password,gender,matchPreference,mode,age,city,college,course,relationshipIntent,interests,languages}=req.body;if(!name||name.trim().length<2||name.trim().length>40||!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!password||password.length<8)return res.status(400).json({error:"Name, valid email and 8+ character password required"});const u=await register(name.trim(),email.trim(),password,{gender,matchPreference,mode,age:Number(age)||null,city,college,course,relationshipIntent,interests,languages});res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
 app.post("/api/auth/guest",authLimiter,async(_req,res)=>{try{const u=await guest();res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
 app.post("/api/auth/login",authLimiter,async(req,res)=>{try{const u=await login(req.body.email,req.body.password);res.json({user:u,token:sign(u)})}catch(e){res.status(e.status||500).json({error:e.message})}});
+app.get("/api/notifications",auth,async(req,res)=>{
+  try{
+    const r=await q(`
+      SELECT n.*, u.name AS actor_name, u.avatar AS actor_avatar
+      FROM notifications n
+      LEFT JOIN users u ON u.id=n.actor_id
+      WHERE n.user_id=$1
+      ORDER BY n.created_at DESC
+      LIMIT 50
+    `,[req.user.id]);
+
+    res.json(r.rows);
+  }catch(e){
+    res.status(500).json({error:e.message});
+  }
+});
+app.post("/api/notifications/read",auth,async(req,res)=>{
+  try{
+    await q(
+      `UPDATE notifications
+       SET read_at=NOW()
+       WHERE user_id=$1 AND read_at IS NULL`,
+      [req.user.id]
+    );
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:e.message});
+  }
+});
 app.get("/api/me",auth,async(req,res)=>{const r=await q(`SELECT ${userSelect} FROM users WHERE id=$1`,[req.user.id]);res.json(r.rows[0])});
 function parseAvatarData(data){
   if(typeof data!=="string") throw Object.assign(new Error("Photo data is required"),{status:400});
@@ -40,16 +169,150 @@ app.post("/api/me/avatar",auth,async(req,res)=>{
   catch(e){res.status(e.status||500).json({error:e.message||"Could not save photo"})}
 });
 app.delete("/api/me/avatar",auth,async(req,res)=>{const r=await q(`UPDATE users SET avatar='' WHERE id=$1 RETURNING ${userSelect}`,[req.user.id]);res.json(r.rows[0])});
+
+app.get("/api/me/photos",auth,async(req,res)=>{await profilePhotosReady;const r=await q("SELECT id,data,mime,position,created_at FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.user.id]);res.json(r.rows)});
+app.get("/api/users/:id/photos",auth,async(req,res)=>{await profilePhotosReady;const r=await q("SELECT id,data,mime,position FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.params.id]);res.json(r.rows)});
+app.post("/api/me/photos",auth,async(req,res)=>{try{await profilePhotosReady;const data=parseAvatarData(req.body?.data);const mime=data.slice(5,data.indexOf(";"));const count=await q("SELECT COUNT(*)::int n FROM profile_photos WHERE user_id=$1",[req.user.id]);if(count.rows[0].n>=6)return res.status(400).json({error:"You can have up to 6 profile photos"});const pos=await q("SELECT COALESCE(MAX(position),-1)+1 position FROM profile_photos WHERE user_id=$1",[req.user.id]);const r=await q("INSERT INTO profile_photos(user_id,data,mime,position) VALUES($1,$2,$3,$4) RETURNING id,data,mime,position,created_at",[req.user.id,data,mime,pos.rows[0].position]);if(Number(pos.rows[0].position)===0)await q("UPDATE users SET avatar=$1 WHERE id=$2",[data,req.user.id]);res.json(r.rows[0])}catch(e){res.status(e.status||500).json({error:e.message||"Could not add photo"})}});
+app.patch("/api/me/photos/:id",auth,async(req,res)=>{try{await profilePhotosReady;const id=Number(req.params.id);const data=req.body?.data?parseAvatarData(req.body.data):null;if(data){const mime=data.slice(5,data.indexOf(";"));await q("UPDATE profile_photos SET data=$1,mime=$2 WHERE id=$3 AND user_id=$4",[data,mime,id,req.user.id])}if(req.body?.position!==undefined){const pos=Math.max(0,Math.min(5,Number(req.body.position)));const current=await q("SELECT id,position FROM profile_photos WHERE id=$1 AND user_id=$2",[id,req.user.id]);if(!current.rowCount)return res.status(404).json({error:"Photo not found"});const old=current.rows[0].position;const other=await q("SELECT id FROM profile_photos WHERE user_id=$1 AND position=$2",[req.user.id,pos]);if(other.rowCount&&other.rows[0].id!==id)await q("UPDATE profile_photos SET position=$1 WHERE id=$2",[6,other.rows[0].id]);await q("UPDATE profile_photos SET position=$1 WHERE id=$2 AND user_id=$3",[pos,id,req.user.id]);if(old!==pos)await q("UPDATE profile_photos SET position=position-1 WHERE user_id=$1 AND position>$2 AND position<=6",[req.user.id,old])}const r=await q("SELECT id,data,mime,position,created_at FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.user.id]);const first=r.rows[0]?.data||"";await q("UPDATE users SET avatar=$1 WHERE id=$2",[first,req.user.id]);res.json(r.rows)}catch(e){res.status(e.status||500).json({error:e.message||"Could not update photo"})}});
+app.delete("/api/me/photos/:id",auth,async(req,res)=>{try{await profilePhotosReady;const id=Number(req.params.id);const r0=await q("SELECT id,position FROM profile_photos WHERE id=$1 AND user_id=$2",[id,req.user.id]);if(!r0.rowCount)return res.status(404).json({error:"Photo not found"});await q("DELETE FROM profile_photos WHERE id=$1 AND user_id=$2",[id,req.user.id]);await q("UPDATE profile_photos SET position=position-1 WHERE user_id=$1 AND position>$2",[req.user.id,r0.rows[0].position]);const r=await q("SELECT id,data,mime,position,created_at FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.user.id]);await q("UPDATE users SET avatar=$1 WHERE id=$2",[r.rows[0]?.data||"",req.user.id]);res.json(r.rows)}catch(e){res.status(500).json({error:"Could not delete photo"})}});
+app.post("/api/me/photos/reorder",auth,async(req,res)=>{try{await profilePhotosReady;const ids=Array.isArray(req.body?.ids)?req.body.ids.map(Number).filter(Number.isInteger):[];if(ids.length<1||ids.length>6)return res.status(400).json({error:"Invalid photo order"});const r=await q("SELECT id FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.user.id]);const valid=r.rows.map(x=>x.id);if(ids.some(id=>!valid.includes(id))||new Set(ids).size!==valid.length)return res.status(400).json({error:"Invalid photo order"});for(let i=0;i<ids.length;i++)await q("UPDATE profile_photos SET position=$1 WHERE id=$2 AND user_id=$3",[i,ids[i],req.user.id]);const photos=await q("SELECT id,data,mime,position,created_at FROM profile_photos WHERE user_id=$1 ORDER BY position,id",[req.user.id]);await q("UPDATE users SET avatar=$1 WHERE id=$2",[photos.rows[0]?.data||"",req.user.id]);res.json(photos.rows)}catch(e){res.status(500).json({error:"Could not reorder photos"})}});
 app.patch("/api/me",auth,async(req,res)=>{const allowedGender=["male","female","other","prefer_not_to_say"],allowedPref=["any","same","opposite"],allowedMode=["dating","friendship","community"];const b=req.body;const gender=allowedGender.includes(b.gender)?b.gender:null,pref=allowedPref.includes(b.matchPreference)?b.matchPreference:null,mode=allowedMode.includes(b.mode)?b.mode:null;if(!gender||!pref||!mode)return res.status(400).json({error:"Invalid profile preference"});const age=b.age?Math.max(18,Math.min(100,Number(b.age))):null;const interests=Array.isArray(b.interests)?b.interests.map(String).map(x=>x.trim()).filter(Boolean).slice(0,30):[];const languages=Array.isArray(b.languages)?b.languages.map(String).map(x=>x.trim()).filter(Boolean).slice(0,10):[];const avatar=typeof b.avatar==='string'&&b.avatar.length<=5_500_000?b.avatar:"";const name=String(b.name||req.user.name).trim().slice(0,40)||req.user.name;await q(`UPDATE users SET name=$1,avatar=$2,bio=$3,gender=$4,match_preference=$5,mode=$6,age=$7,city=$8,college=$9,course=$10,relationship_intent=$11,interests=$12,languages=$13 WHERE id=$14`,[name,avatar,String(b.bio||"").slice(0,280),gender,pref,mode,age,String(b.city||"").slice(0,80),String(b.college||"").slice(0,120),String(b.course||"").slice(0,100),String(b.relationshipIntent||"open_to_connections").slice(0,40),interests,languages,req.user.id]);const r=await q(`SELECT ${userSelect} FROM users WHERE id=$1`,[req.user.id]);res.json(r.rows[0])});
 
 // Communities and events
+app.post("/api/groups", auth, async(req,res)=>{
+  try{
+    const {name,description}=req.body;
+
+    if(!name || !name.trim()){
+      return res.status(400).json({error:"Community name is required"});
+    }
+
+    // Check VIP status
+    const vip=await q(
+      `SELECT vip_until FROM users WHERE id=$1`,
+      [req.user.id]
+    );
+
+    const isVip=
+      vip.rows[0]?.vip_until &&
+      new Date(vip.rows[0].vip_until)>new Date();
+
+    // Non-VIP users need one paid community creation
+    let purchaseId=null;
+
+    if(!isVip){
+      const purchase=await q(
+        `UPDATE feature_purchases
+         SET status='used'
+         WHERE id=(
+           SELECT id
+           FROM feature_purchases
+           WHERE user_id=$1
+             AND product='community_create'
+             AND status='paid'
+           ORDER BY id ASC
+           LIMIT 1
+         )
+         RETURNING id`,
+        [req.user.id]
+      );
+
+      if(!purchase.rowCount){
+        return res.status(402).json({
+          error:"₹29 payment is required to create a community."
+        });
+      }
+
+      purchaseId=purchase.rows[0].id;
+    }
+
+    try{
+      const group = await q(
+        `INSERT INTO groups(name,description,slug,category,created_by)
+          VALUES($1,$2,$3,$4,$5)
+          RETURNING *`,
+        [
+        name.trim(),
+        description?.trim() || "",
+        name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""),"General",
+        req.user.id
+        ]
+      );
+
+      await q(
+        `INSERT INTO group_members(group_id,user_id)
+         VALUES($1,$2)
+         ON CONFLICT DO NOTHING`,
+        [group.rows[0].id,req.user.id]
+      );
+
+      res.json(group.rows[0]);
+
+    }catch(e){
+      // If community creation failed, restore the paid purchase
+      if(purchaseId){
+        await q(
+          `UPDATE feature_purchases
+           SET status='paid'
+           WHERE id=$1`,
+          [purchaseId]
+        );
+      }
+      throw e;
+    }
+
+  }catch(e){
+    console.error("Create community error:",e.message);
+    res.status(500).json({error:"Unable to create community"});
+  }
+});
 app.get("/api/groups",auth,async(req,res)=>{const r=await q(`SELECT g.*,COUNT(gm.user_id)::int AS members,EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$1) AS joined FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id GROUP BY g.id ORDER BY members DESC,g.name`,[req.user.id]);res.json(r.rows)});
 app.post("/api/groups/:id/join",auth,async(req,res)=>{await q("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true})});
 app.post("/api/groups/:id/leave",auth,async(req,res)=>{await q("DELETE FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);res.json({ok:true})});
 app.get("/api/groups/:id/members",auth,async(req,res)=>{const r=await q(`SELECT u.id,u.name,u.avatar,u.bio,u.verified,u.age,u.city,u.college,u.course,u.interests,u.mode FROM users u JOIN group_members gm ON gm.user_id=u.id WHERE gm.group_id=$1 ORDER BY u.verified DESC,u.name LIMIT 100`,[req.params.id]);res.json(r.rows)});
 app.get("/api/groups/:id/messages",auth,async(req,res)=>{const r=await q(`SELECT m.id,m.body,m.attachment_data,m.attachment_mime,m.created_at,u.id sender_id,u.name sender_name,u.avatar FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.group_id=$1 ORDER BY m.created_at DESC LIMIT 100`,[req.params.id]);res.json(r.rows.reverse())});
 app.get("/api/events",auth,async(req,res)=>{const r=await q(`SELECT e.*,g.name group_name,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$1) AS joined FROM events e JOIN groups g ON g.id=e.group_id LEFT JOIN event_members em ON em.event_id=e.id WHERE e.starts_at>=NOW()-INTERVAL '1 day' GROUP BY e.id,g.name ORDER BY e.starts_at LIMIT 100`,[req.user.id]);res.json(r.rows)});
-app.post("/api/groups/:id/events",auth,async(req,res)=>{const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);if(!member.rowCount)return res.status(403).json({error:"Join the group first"});const {title,description,startsAt,location}=req.body;if(!title||!startsAt)return res.status(400).json({error:"Title and start time required"});const r=await q("INSERT INTO events(group_id,creator_id,title,description,starts_at,location) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",[req.params.id,req.user.id,String(title).slice(0,120),String(description||"").slice(0,500),startsAt,String(location||"").slice(0,150)]);res.json(r.rows[0])});
+app.post("/api/groups/:id/events",auth,async(req,res)=>{
+  const vip = await q(
+  "SELECT vip_until FROM users WHERE id=$1",
+  [req.user.id]
+);
+
+const isVip =
+  vip.rows[0]?.vip_until &&
+  new Date(vip.rows[0].vip_until) > new Date();
+
+let purchaseId = null;
+
+if(!isVip){
+  const purchase = await q(
+    `UPDATE feature_purchases
+     SET status='used'
+     WHERE id=(
+       SELECT id
+       FROM feature_purchases
+       WHERE user_id=$1
+         AND product='event_create'
+         AND status='paid'
+       ORDER BY id ASC
+       LIMIT 1
+     )
+     RETURNING id`,
+    [req.user.id]
+  );
+
+  if(!purchase.rowCount){
+    return res.status(402).json({
+      error:"₹29 payment is required to create an event."
+    });
+  }
+
+  purchaseId = purchase.rows[0].id;
+}
+  
+
+  const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);if(!member.rowCount)return res.status(403).json({error:"Join the group first"});const {title,description,startsAt,location}=req.body;if(!title||!startsAt)return res.status(400).json({error:"Title and start time required"});const r=await q("INSERT INTO events(group_id,creator_id,title,description,starts_at,location) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",[req.params.id,req.user.id,String(title).slice(0,120),String(description||"").slice(0,500),startsAt,String(location||"").slice(0,150)]);res.json(r.rows[0])});
+
 app.post("/api/events/:id/join",auth,async(req,res)=>{await q("INSERT INTO event_members(event_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true})});
 
 // Compatibility and profile discovery
@@ -58,26 +321,320 @@ app.get("/api/compatibility/answers",auth,async(req,res)=>{const r=await q("SELE
 app.put("/api/compatibility/answers",auth,async(req,res)=>{const answers=Array.isArray(req.body.answers)?req.body.answers:[];for(const a of answers){if(Number.isInteger(Number(a.questionId))&&String(a.answer||"").length<=120)await q("INSERT INTO compatibility_answers(user_id,question_id,answer) VALUES($1,$2,$3) ON CONFLICT(user_id,question_id) DO UPDATE SET answer=EXCLUDED.answer",[req.user.id,Number(a.questionId),String(a.answer)])}res.json({ok:true})});
 function oppositeOk(me,target){if(me.match_preference==="any")return true;if(me.match_preference==="same")return !["male","female"].includes(me.gender)||me.gender===target.gender;if(me.match_preference==="opposite")return !["male","female"].includes(me.gender)||["male","female"].includes(target.gender)&&me.gender!==target.gender;return true}
 function targetAccepts(me,target){if(target.match_preference==="any")return true;if(target.match_preference==="same")return !["male","female"].includes(target.gender)||target.gender===me.gender;if(target.match_preference==="opposite")return !["male","female"].includes(target.gender)||["male","female"].includes(me.gender)&&target.gender!==me.gender;return true}
-app.get("/api/discover",auth,async(req,res)=>{const me=(await q(`SELECT * FROM users WHERE id=$1`,[req.user.id])).rows[0];const r=await q(`SELECT u.* FROM users u WHERE u.id<>$1 AND u.status<>'banned' AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1)) AND NOT EXISTS(SELECT 1 FROM swipes s WHERE s.swiper_id=$1 AND s.target_id=u.id) ORDER BY u.verified DESC,u.created_at DESC LIMIT 100`,[req.user.id]);const candidates=[];for(const u of r.rows){if(oppositeOk(me,u)&&targetAccepts(me,u))candidates.push(u)}
- const ids=candidates.map(x=>x.id);let groups=[];if(ids.length){groups=(await q("SELECT group_id,user_id FROM group_members WHERE user_id=ANY($1::bigint[])",[ids])).rows}const myGroups=(await q("SELECT group_id FROM group_members WHERE user_id=$1",[req.user.id])).rows.map(x=>Number(x.group_id));const qa=(await q("SELECT question_id,answer FROM compatibility_answers WHERE user_id=$1",[req.user.id])).rows;const qmap=new Map(qa.map(x=>[Number(x.question_id),x.answer]));const ids2=[...new Set(groups.map(x=>Number(x.group_id)))];const answerRows=ids.length?await q("SELECT user_id,question_id,answer FROM compatibility_answers WHERE user_id=ANY($1::bigint[])",[ids]):{rows:[]};const groupMap=new Map();for(const g of groups){const n=Number(g.user_id);if(!groupMap.has(n))groupMap.set(n,new Set());groupMap.get(n).add(Number(g.group_id))}const ansMap=new Map();for(const a of answerRows.rows){const n=Number(a.user_id);if(!ansMap.has(n))ansMap.set(n,new Map());ansMap.get(n).set(Number(a.question_id),a.answer)}function score(u){let s=45,reasons=[];if(u.age&&me.age){const d=Math.abs(u.age-me.age);if(d<=2){s+=12;reasons.push("Similar age")}else if(d<=5){s+=7}}if(me.city&&u.city&&me.city.toLowerCase()===u.city.toLowerCase()){s+=10;reasons.push("Same city")}if(me.course&&u.course&&me.course.toLowerCase()===u.course.toLowerCase()){s+=8;reasons.push("Same course")}const common=[...(groupMap.get(u.id)||[])].filter(x=>myGroups.includes(x));if(common.length){s+=Math.min(20,common.length*7);reasons.push(`${common.length} common group${common.length>1?'s':''}`)}const a=ansMap.get(u.id);let sameAnswers=0;if(a)for(const [qid,val] of qmap)if(a.get(qid)===val)sameAnswers++;if(sameAnswers){s+=Math.min(15,sameAnswers*4);reasons.push(`${sameAnswers} compatible answers`)}const commonInterests=(u.interests||[]).filter(x=>(me.interests||[]).map(v=>String(v).toLowerCase()).includes(String(x).toLowerCase()));if(commonInterests.length){s+=Math.min(15,commonInterests.length*3);reasons.push(`${commonInterests.length} shared interest${commonInterests.length>1?'s':''}`)}if(u.verified){s+=3;reasons.push("Verified profile")}return {score:Math.min(99,s),reasons:reasons.slice(0,4)}}
- const out=candidates.map(u=>{const z=score(u);return {id:u.id,name:u.name,avatar:u.avatar,bio:u.bio,verified:u.verified,age:u.age,city:u.city,college:u.college,course:u.course,relationship_intent:u.relationship_intent,interests:u.interests,languages:u.languages,gender:u.gender,mode:u.mode,match_score:z.score,reasons:z.reasons}}).sort((a,b)=>b.match_score-a.match_score);res.json(out)});
-app.post("/api/swipes",auth,async(req,res)=>{const target=Number(req.body.targetId),direction=req.body.direction;if(!Number.isInteger(target)||target===req.user.id||!['like','pass'].includes(direction))return res.status(400).json({error:"Invalid swipe"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,$3) ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction=EXCLUDED.direction,created_at=NOW()",[req.user.id,target,direction]);let matched=false;if(direction==='like'){const reciprocal=await q("SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",[target,req.user.id]);if(reciprocal.rowCount){const a=Math.min(req.user.id,target),b=Math.max(req.user.id,target);await q("INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[a,b]);matched=true;io.to(`user:${target}`).emit("new:match",{userId:req.user.id})}}res.json({ok:true,matched})});
-app.get("/api/matches",auth,async(req,res)=>{const r=await q(`SELECT m.id,CASE WHEN m.user1_id=$1 THEN u2.id ELSE u1.id END user_id,CASE WHEN m.user1_id=$1 THEN u2.name ELSE u1.name END name,CASE WHEN m.user1_id=$1 THEN u2.avatar ELSE u1.avatar END avatar,CASE WHEN m.user1_id=$1 THEN u2.verified ELSE u1.verified END verified FROM matches m JOIN users u1 ON u1.id=m.user1_id JOIN users u2 ON u2.id=m.user2_id WHERE m.user1_id=$1 OR m.user2_id=$1 ORDER BY m.created_at DESC`,[req.user.id]);res.json(r.rows)});
+app.get("/api/discover",auth,async(req,res)=>{await premiumFeaturesReady;await boostsReady;const me=(await q(`SELECT * FROM users WHERE id=$1`,[req.user.id])).rows[0];const r=await q(`SELECT u.*,EXISTS(SELECT 1 FROM profile_boosts pb WHERE pb.user_id=u.id AND pb.status='active' AND pb.expires_at>NOW()) AS boosted FROM users u WHERE u.id<>$1 AND u.status<>'banned' AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1)) AND NOT EXISTS(SELECT 1 FROM swipes s WHERE s.swiper_id=$1 AND s.target_id=u.id) AND ((SELECT travel_city FROM users WHERE id=$1) IS NULL OR LOWER(COALESCE(u.city,''))=LOWER((SELECT travel_city FROM users WHERE id=$1))) AND (COALESCE(u.incognito_enabled,FALSE)=FALSE OR EXISTS(SELECT 1 FROM swipes s2 WHERE s2.swiper_id=u.id AND s2.target_id=$1 AND s2.direction='like')) ORDER BY boosted DESC,u.verified DESC,u.created_at DESC LIMIT 60`,[req.user.id]);const candidates=[];for(const u of r.rows){if(oppositeOk(me,u)&&targetAccepts(me,u))candidates.push(u)}
+ const ids=candidates.map(x=>x.id);let groups=[];if(ids.length){groups=(await q("SELECT group_id,user_id FROM group_members WHERE user_id=ANY($1::bigint[])",[ids])).rows}const myGroups=(await q("SELECT group_id FROM group_members WHERE user_id=$1",[req.user.id])).rows.map(x=>Number(x.group_id));const qa=(await q("SELECT question_id,answer FROM compatibility_answers WHERE user_id=$1",[req.user.id])).rows;const qmap=new Map(qa.map(x=>[Number(x.question_id),x.answer]));const ids2=[...new Set(groups.map(x=>Number(x.group_id)))];const answerRows=ids.length?await q("SELECT user_id,question_id,answer FROM compatibility_answers WHERE user_id=ANY($1::bigint[])",[ids]):{rows:[]};const groupMap=new Map();for(const g of groups){const n=Number(g.user_id);if(!groupMap.has(n))groupMap.set(n,new Set());groupMap.get(n).add(Number(g.group_id))}const ansMap=new Map();for(const a of answerRows.rows){const n=Number(a.user_id);if(!ansMap.has(n))ansMap.set(n,new Map());ansMap.get(n).set(Number(a.question_id),a.answer)}function score(u){let s=45,reasons=[];if(u.age&&me.age){const d=Math.abs(u.age-me.age);if(d<=2){s+=12;reasons.push("Similar age")}else if(d<=5){s+=7}}if(me.city&&u.city&&me.city.toLowerCase()===u.city.toLowerCase()){s+=10;reasons.push("Same city")}if(me.course&&u.course&&me.course.toLowerCase()===u.course.toLowerCase()){s+=8;reasons.push("Same course")}const common=[...(groupMap.get(u.id)||[])].filter(x=>myGroups.includes(x));if(common.length){s+=Math.min(20,common.length*7);reasons.push(`${common.length} common group${common.length>1?'s':''}`)}const a=ansMap.get(u.id);let sameAnswers=0;if(a)for(const [qid,val] of qmap)if(a.get(qid)===val)sameAnswers++;if(sameAnswers){s+=Math.min(15,sameAnswers*4);reasons.push(`${sameAnswers} compatible answers`)}const commonInterests=(u.interests||[]).filter(x=>(me.interests||[]).map(v=>String(v).toLowerCase()).includes(String(x).toLowerCase()));if(commonInterests.length){s+=Math.min(15,commonInterests.length*3);reasons.push(`${commonInterests.length} shared interest${commonInterests.length>1?'s':''}`)}if(u.mode&&me.mode&&u.mode===me.mode){s+=5;reasons.push("Same connection mode")}if(u.verified){s+=3;reasons.push("Verified profile")}return {score:Math.min(99,s),reasons:reasons.slice(0,4)}}
+ const out=candidates.map(u=>{const z=score(u);return {id:u.id,name:u.name,avatar:u.avatar,bio:u.bio,verified:u.verified,boosted:!!u.boosted,age:u.age,city:u.city,college:u.college,course:u.course,relationship_intent:u.relationship_intent,interests:u.interests,languages:u.languages,gender:u.gender,mode:u.mode,match_score:z.score,reasons:z.reasons}}).sort((a,b)=>b.match_score-a.match_score);res.json(out)});
+app.post("/api/swipes",auth,async(req,res)=>{const target=Number(req.body.targetId),direction=req.body.direction;if(!Number.isInteger(target)||target===req.user.id||!['like','pass'].includes(direction))return res.status(400).json({error:"Invalid swipe"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,$3) ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction=EXCLUDED.direction,created_at=NOW()",[req.user.id,target,direction]);let matched=false;if(direction==='like'){
+    const reciprocal=await q(
+      "SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",
+      [target,req.user.id]
+    );
+
+    if(reciprocal.rowCount){
+
+      const a=Math.min(req.user.id,target);
+      const b=Math.max(req.user.id,target);
+
+      await q(
+        "INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [a,b]
+      );
+
+      matched=true;
+
+      await createNotification(
+        target,
+        req.user.id,
+        "match",
+        "💞 It's a match!",
+        "You both liked each other. Start the conversation!"
+      );
+
+      await createNotification(
+        req.user.id,
+        target,
+        "match",
+        "💞 It's a match!",
+        "You both liked each other. Start the conversation!"
+      );
+
+      io.to(`user:${target}`).emit("new:match",{userId:req.user.id});
+
+    } else {
+
+      await createNotification(
+        target,
+        req.user.id,
+        "like",
+        "❤️ Someone likes you!",
+        "Someone liked your profile. Check Likes You to see who it is."
+      );
+    }
+  }
+});
+
+  app.get("/api/matches",auth,async(req,res)=>{const r=await q(`SELECT m.id,CASE WHEN m.user1_id=$1 THEN u2.id ELSE u1.id END user_id,CASE WHEN m.user1_id=$1 THEN u2.name ELSE u1.name END name,CASE WHEN m.user1_id=$1 THEN u2.avatar ELSE u1.avatar END avatar,CASE WHEN m.user1_id=$1 THEN u2.verified ELSE u1.verified END verified FROM matches m JOIN users u1 ON u1.id=m.user1_id JOIN users u2 ON u2.id=m.user2_id WHERE m.user1_id=$1 OR m.user2_id=$1 ORDER BY m.created_at DESC`,[req.user.id]);res.json(r.rows)});
+app.get("/api/likes",auth,async(req,res)=>{
+  const vip=await q(
+    `SELECT vip_until>NOW() AS active FROM users WHERE id=$1`,
+    [req.user.id]
+  );
+  const vipActive=!!vip.rows[0]?.active;
+
+  const incoming=await q(
+    `SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,
+      u.age,u.city,u.college,u.course,u.interests,
+      s.created_at AS liked_at,
+      EXISTS(SELECT 1 FROM super_likes sl WHERE sl.sender_id=u.id AND sl.receiver_id=$1) AS super_liked,
+      EXISTS(
+        SELECT 1 FROM matches m
+        WHERE (m.user1_id=$1 AND m.user2_id=u.id)
+           OR (m.user1_id=u.id AND m.user2_id=$1)
+      ) AS matched
+    FROM swipes s
+    JOIN users u ON u.id=s.swiper_id
+    WHERE s.target_id=$1
+      AND s.direction='like'
+      AND u.status<>'banned'
+      AND NOT EXISTS(
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_id=$1 AND b.blocked_id=u.id)
+           OR (b.blocker_id=u.id AND b.blocked_id=$1)
+      )
+    ORDER BY super_liked DESC,s.created_at DESC`,
+    [req.user.id]
+  );
+
+  const outgoing=await q(
+    `SELECT s.id AS swipe_id,u.id AS user_id,u.name,u.avatar,u.verified,
+      u.age,u.city,u.college,u.course,u.interests,
+      s.created_at AS liked_at,
+      EXISTS(
+        SELECT 1 FROM matches m
+        WHERE (m.user1_id=$1 AND m.user2_id=u.id)
+           OR (m.user1_id=u.id AND m.user2_id=$1)
+      ) AS matched
+    FROM swipes s
+    JOIN users u ON u.id=s.target_id
+    WHERE s.swiper_id=$1
+      AND s.direction='like'
+      AND u.status<>'banned'
+      AND NOT EXISTS(
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_id=$1 AND b.blocked_id=u.id)
+           OR (b.blocker_id=u.id AND b.blocked_id=$1)
+      )
+    ORDER BY s.created_at DESC`,
+    [req.user.id]
+  );
+
+  const incomingRows = incoming.rows.filter(x => !x.matched);
+
+  const revealedLikes = await q(
+    `SELECT COUNT(*)::int AS count
+     FROM feature_purchases
+     WHERE user_id=$1
+       AND product='extra_like'
+       AND status='paid'
+       AND used_at IS NOT NULL`,
+    [req.user.id]
+  );
+
+  const paidExtraLikes = revealedLikes.rows[0]?.count || 0;
+
+  const visibleCount = vipActive
+    ? incomingRows.length
+    : Math.min(incomingRows.length, 1 + paidExtraLikes);
+
+  res.json({
+    incoming: incomingRows.slice(0, visibleCount),
+    incomingCount: incomingRows.length,
+    lockedCount: Math.max(0, incomingRows.length - visibleCount),
+    outgoing: outgoing.rows.filter(x => !x.matched),
+    vipActive
+  });
+
+});
+
 
 // Legacy rooms/private chat + moderation
 app.get("/api/rooms",optionalAuth,async(_req,res)=>{const r=await q(`SELECT r.*,COUNT(DISTINCT rm.user_id)::int online FROM rooms r LEFT JOIN room_members rm ON rm.room_id=r.id GROUP BY r.id ORDER BY r.name`);res.json(r.rows)});
 app.post("/api/rooms/:id/join",auth,async(req,res)=>{const room=await q("SELECT * FROM rooms WHERE id=$1",[req.params.id]);if(!room.rowCount)return res.status(404).json({error:"Room not found"});await q("INSERT INTO room_members(room_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json(room.rows[0])});
 app.get("/api/rooms/:id/messages",auth,async(req,res)=>{const r=await q(`SELECT m.id,m.body,m.created_at,u.id sender_id,u.name sender_name,u.avatar FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.room_id=$1 ORDER BY m.created_at DESC LIMIT 100`,[req.params.id]);res.json(r.rows.reverse())});
 app.get("/api/people",auth,async(req,res)=>{const r=await q(`SELECT ${userSelect} FROM users WHERE id<>$1 AND status='online' AND id NOT IN(SELECT blocked_id FROM blocks WHERE blocker_id=$1) AND id NOT IN(SELECT blocker_id FROM blocks WHERE blocked_id=$1) ORDER BY verified DESC,created_at DESC LIMIT 50`,[req.user.id]);res.json(r.rows)});
-app.get("/api/dm/:id/messages",auth,async(req,res)=>{const id=Number(req.params.id);const r=await q(`SELECT m.id,m.body,m.attachment_data,m.attachment_mime,m.created_at,u.id sender_id,u.name sender_name,u.avatar FROM messages m JOIN users u ON u.id=m.sender_id WHERE ((m.sender_id=$1 AND m.receiver_id=$2) OR (m.sender_id=$2 AND m.receiver_id=$1)) ORDER BY m.created_at DESC LIMIT 100`,[req.user.id,id]);res.json(r.rows.reverse())});
-app.post("/api/dm/:id/image",auth,messageLimiter,async(req,res)=>{try{const id=Number(req.params.id),dataUrl=String(req.body.dataUrl||""),m=dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:"Invalid user"});if(!m)return res.status(400).json({error:"Only JPG, PNG or WebP images are allowed"});const bytes=Buffer.from(m[2],"base64");if(bytes.length>2*1024*1024)return res.status(413).json({error:"Image must be 2 MB or smaller"});const r=await q("INSERT INTO messages(sender_id,receiver_id,body,attachment_data,attachment_mime) VALUES($1,$2,'[Image]',$3,$4) RETURNING id,body,attachment_data,attachment_mime,created_at",[req.user.id,id,dataUrl,m[1]]);io.to(`dm:${Math.min(req.user.id,id)}:${Math.max(req.user.id,id)}`).emit("dm:message",{...r.rows[0],sender_id:req.user.id,sender_name:req.user.name});res.json(r.rows[0])}catch{res.status(500).json({error:"Could not send image"})}});
-app.post("/api/users/:id/block",auth,async(req,res)=>{if(Number(req.params.id)===req.user.id)return res.status(400).json({error:"You cannot block yourself"});await q("INSERT INTO blocks(blocker_id,blocked_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.user.id,req.params.id]);res.json({ok:true})});
+app.get("/api/dm/:id/messages",auth,async(req,res)=>{await messagingFeaturesReady;const id=Number(req.params.id);const r=await q(`SELECT m.id,m.body,m.attachment_data,m.attachment_mime,m.created_at,m.read_at,m.reply_to_id,u.id sender_id,u.name sender_name,u.avatar,rm.body reply_body,ru.name reply_sender_name,COALESCE((SELECT json_agg(json_build_object('emoji',x.emoji,'count',x.cnt,'mine',x.mine) ORDER BY x.emoji) FROM (SELECT mr.emoji,COUNT(*)::int cnt,BOOL_OR(mr.user_id=$3) mine FROM message_reactions mr WHERE mr.message_id=m.id GROUP BY mr.emoji) x),'[]'::json) reactions FROM messages m JOIN users u ON u.id=m.sender_id LEFT JOIN messages rm ON rm.id=m.reply_to_id LEFT JOIN users ru ON ru.id=rm.sender_id WHERE ((m.sender_id=$1 AND m.receiver_id=$2) OR (m.sender_id=$2 AND m.receiver_id=$1)) ORDER BY m.created_at DESC LIMIT 100`,[req.user.id,id,req.user.id]);res.json(r.rows.reverse())});
+app.post("/api/dm/:id/read",auth,async(req,res)=>{await messagingFeaturesReady;const id=Number(req.params.id);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:"Invalid user"});const r=await q("UPDATE messages SET read_at=NOW() WHERE sender_id=$1 AND receiver_id=$2 AND read_at IS NULL RETURNING id",[id,req.user.id]);const messageIds=r.rows.map(x=>x.id);if(messageIds.length){const pair=`dm:${Math.min(req.user.id,id)}:${Math.max(req.user.id,id)}`;io.to(pair).emit("dm:read",{messageIds,readerId:req.user.id})}res.json({messageIds})});
+app.post("/api/dm/:id/image",auth,messageLimiter,async(req,res)=>{await messagingFeaturesReady;try{const id=Number(req.params.id),dataUrl=String(req.body.dataUrl||""),m=dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:"Invalid user"});if(!m)return res.status(400).json({error:"Only JPG, PNG or WebP images are allowed"});const bytes=Buffer.from(m[2],"base64");if(bytes.length>2*1024*1024)return res.status(413).json({error:"Image must be 2 MB or smaller"});const r=await q("INSERT INTO messages(sender_id,receiver_id,body,attachment_data,attachment_mime) VALUES($1,$2,'[Image]',$3,$4) RETURNING id,body,attachment_data,attachment_mime,created_at,read_at",[req.user.id,id,dataUrl,m[1]]);io.to(`dm:${Math.min(req.user.id,id)}:${Math.max(req.user.id,id)}`).emit("dm:message",{...r.rows[0],sender_id:req.user.id,sender_name:req.user.name});await createNotification(id,req.user.id,"message",`💬 ${req.user.name} sent you a photo`,"Open your conversation to view it.");res.json(r.rows[0])}catch{res.status(500).json({error:"Could not send image"})}});
+app.post("/api/users/:id/block",auth,async(req,res)=>{const id=Number(req.params.id);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:"You cannot block yourself"});await q("INSERT INTO blocks(blocker_id,blocked_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.user.id,id]);await q("DELETE FROM matches WHERE (user1_id=$1 AND user2_id=$2) OR (user1_id=$2 AND user2_id=$1)",[req.user.id,id]);res.json({ok:true})});
+app.delete("/api/matches/:id",auth,async(req,res)=>{const id=Number(req.params.id);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:"Invalid user"});await q("DELETE FROM matches WHERE (user1_id=$1 AND user2_id=$2) OR (user1_id=$2 AND user2_id=$1)",[req.user.id,id]);await q("DELETE FROM swipes WHERE (swiper_id=$1 AND target_id=$2) OR (swiper_id=$2 AND target_id=$1)",[req.user.id,id]);res.json({ok:true})});
 app.post("/api/reports",auth,async(req,res)=>{const {reportedUserId,messageId,reason,details}=req.body;if(!reportedUserId||Number(reportedUserId)===req.user.id||!reason)return res.status(400).json({error:"Missing report fields"});await q("INSERT INTO reports(reporter_id,reported_user_id,message_id,reason,details) VALUES($1,$2,$3,$4,$5)",[req.user.id,reportedUserId,messageId||null,String(reason).slice(0,100),String(details||"").slice(0,1000)]);res.json({ok:true})});
 
+// Premium dating features
+app.post("/api/super-likes/use",auth,async(req,res)=>{try{await superLikesReady;const target=Number(req.body?.targetId);if(!Number.isInteger(target)||target===req.user.id)return res.status(400).json({error:"Invalid target"});const blocked=await q("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[req.user.id,target]);if(blocked.rowCount)return res.status(403).json({error:"User unavailable"});const targetUser=await q("SELECT id FROM users WHERE id=$1 AND status<>'banned'",[target]);if(!targetUser.rowCount)return res.status(404).json({error:"Profile unavailable"});const purchase=await q(`UPDATE feature_purchases SET status='used' WHERE id=(SELECT id FROM feature_purchases WHERE user_id=$1 AND product='super_like' AND status='paid' ORDER BY id ASC LIMIT 1) RETURNING id`,[req.user.id]);if(!purchase.rowCount)return res.status(402).json({error:"₹49 payment is required for a Super Like."});await q("INSERT INTO super_likes(sender_id,receiver_id) VALUES($1,$2)",[req.user.id,target]);await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,'like') ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction='like',created_at=NOW()",[req.user.id,target]);const reciprocal=await q("SELECT 1 FROM swipes WHERE swiper_id=$1 AND target_id=$2 AND direction='like'",[target,req.user.id]);let matched=false;if(reciprocal.rowCount){const a=Math.min(req.user.id,target),b=Math.max(req.user.id,target);await q("INSERT INTO matches(user1_id,user2_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[a,b]);matched=true;await createNotification(target,req.user.id,"match","💞 It's a match!","Your Super Like became a mutual match.");await createNotification(req.user.id,target,"match","💞 It's a match!","Your Super Like became a mutual match.");io.to(`user:${target}`).emit("new:match",{userId:req.user.id})}else await createNotification(target,req.user.id,"super_like","⭐ Super Like received!",`${req.user.name} sent you a Super Like.`);res.json({ok:true,matched,targetId:target})}catch(e){console.error("Super Like error:",e.message);res.status(500).json({error:"Unable to send Super Like"})}});
+app.post("/api/swipes/rewind",auth,async(req,res)=>{try{const vip=await q("SELECT vip_until>NOW() AS active FROM users WHERE id=$1",[req.user.id]);if(!vip.rows[0]?.active)return res.status(402).json({error:"Rewind is available with VIP."});const r=await q(`DELETE FROM swipes WHERE id=(SELECT id FROM swipes WHERE swiper_id=$1 ORDER BY created_at DESC LIMIT 1) RETURNING target_id`,[req.user.id]);if(!r.rowCount)return res.status(404).json({error:"Nothing to rewind."});const u=await q("SELECT name FROM users WHERE id=$1",[r.rows[0].target_id]);res.json({ok:true,name:u.rows[0]?.name||"your last swipe"})}catch(e){res.status(500).json({error:"Unable to rewind swipe"})}});
+app.post("/api/me/privacy",auth,async(req,res)=>{try{await premiumFeaturesReady;const vip=await q("SELECT vip_until>NOW() AS active FROM users WHERE id=$1",[req.user.id]);if(!vip.rows[0]?.active)return res.status(402).json({error:"Incognito Mode is available with VIP."});const r=await q("UPDATE users SET incognito_enabled=$1 WHERE id=$2 RETURNING incognito_enabled",[!!req.body?.incognito_enabled,req.user.id]);res.json(r.rows[0])}catch(e){res.status(500).json({error:"Unable to update privacy settings"})}});
+app.post("/api/me/snooze",auth,async(req,res)=>{try{await premiumFeaturesReady;const r=await q("UPDATE users SET snoozed_until=NOW()+INTERVAL '24 hours' WHERE id=$1 RETURNING snoozed_until",[req.user.id]);res.json(r.rows[0])}catch(e){res.status(500).json({error:"Unable to snooze profile"})}});
+app.post("/api/me/travel",auth,async(req,res)=>{try{await premiumFeaturesReady;const vip=await q("SELECT vip_until>NOW() AS active FROM users WHERE id=$1",[req.user.id]);if(!vip.rows[0]?.active)return res.status(402).json({error:"Travel Mode is available with VIP."});const city=String(req.body?.city||'').trim().slice(0,80);const r=await q("UPDATE users SET travel_city=NULLIF($1,'') WHERE id=$2 RETURNING travel_city",[city,req.user.id]);res.json(r.rows[0])}catch(e){res.status(500).json({error:"Unable to update Travel Mode"})}});
+app.post("/api/profile-views/:id",auth,async(req,res)=>{try{await premiumFeaturesReady;const id=Number(req.params.id);if(!Number.isInteger(id)||id===req.user.id)return res.json({ok:true});await q("INSERT INTO profile_views(viewer_id,viewed_id) VALUES($1,$2) ON CONFLICT(viewer_id,viewed_id) DO UPDATE SET created_at=NOW()",[req.user.id,id]);await createNotification(id,req.user.id,"profile_view","👀 Someone viewed your profile",`${req.user.name} checked out your VibeMeet profile.`);res.json({ok:true})}catch(e){res.status(500).json({error:"Unable to record profile view"})}});
+app.get("/api/profile-views",auth,async(req,res)=>{try{await premiumFeaturesReady;const vip=await q("SELECT vip_until>NOW() AS active FROM users WHERE id=$1",[req.user.id]);if(!vip.rows[0]?.active)return res.status(402).json({error:"Profile views are available with VIP."});const r=await q(`SELECT pv.id,pv.created_at,u.id AS user_id,u.name,u.avatar,u.age,u.city,u.verified FROM profile_views pv JOIN users u ON u.id=pv.viewer_id WHERE pv.viewed_id=$1 ORDER BY pv.created_at DESC LIMIT 100`,[req.user.id]);res.json(r.rows)}catch(e){res.status(500).json({error:"Unable to load profile views"})}});
+app.post("/api/compliments",auth,async(req,res)=>{try{await premiumFeaturesReady;const receiver=Number(req.body?.receiverId),body=String(req.body?.body||'').trim();if(!Number.isInteger(receiver)||receiver===req.user.id||!body||body.length>150)return res.status(400).json({error:"Write a short compliment (max 150 characters)."});const vip=await q("SELECT vip_until>NOW() AS active FROM users WHERE id=$1",[req.user.id]);if(!vip.rows[0]?.active)return res.status(402).json({error:"Compliments are available with VIP."});await q("INSERT INTO compliments(sender_id,receiver_id,body) VALUES($1,$2,$3)",[req.user.id,receiver,body]);await q("INSERT INTO swipes(swiper_id,target_id,direction) VALUES($1,$2,'like') ON CONFLICT(swiper_id,target_id) DO UPDATE SET direction='like',created_at=NOW()",[req.user.id,receiver]);await createNotification(receiver,req.user.id,"compliment","💌 New compliment",`${req.user.name}: ${body}`);res.json({ok:true})}catch(e){res.status(500).json({error:"Unable to send compliment"})}});
 // Payments
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET?new Razorpay({key_id:process.env.RAZORPAY_KEY_ID,key_secret:process.env.RAZORPAY_KEY_SECRET}):null;
 async function createOrder(req,res,product){if(!razorpay)return res.status(503).json({error:"Payments not configured"});const amount=product==='vip'?499:Number(process.env.CALL_PASS_AMOUNT||99),days=Number(process.env.CALL_PASS_DAYS||7);const order=await razorpay.orders.create({amount:amount*100,currency:'INR',receipt:`${product}_${req.user.id}_${Date.now()}`});await q("INSERT INTO subscriptions(user_id,order_id,amount_paise,status,product) VALUES($1,$2,$3,'created',$4)",[req.user.id,order.id,amount*100,product]);res.json({orderId:order.id,amount:amount*100,keyId:process.env.RAZORPAY_KEY_ID,days})}
 app.post("/api/vip/order",auth,(req,res)=>createOrder(req,res,'vip'));app.post("/api/call-pass/order",auth,(req,res)=>createOrder(req,res,'call_pass'));
+const FEATURE_PRICES = {
+  community_create: 29,
+  event_create: 29,
+  extra_like: 19,
+  super_like: 49,
+  boost: 99
+};
+
+async function createFeatureOrder(req, res, product) {
+  try {
+    if (!razorpay) {
+      return res.status(503).json({ error: "Payments not configured" });
+    }
+
+    const price = FEATURE_PRICES[product];
+
+    if (!price) {
+      return res.status(400).json({ error: "Invalid feature" });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: price * 100,
+      currency: "INR",
+      receipt: `${product}_${req.user.id}_${Date.now()}`
+    });
+
+    await q(
+      `INSERT INTO feature_purchases
+       (user_id, product, amount_paise, status, order_id)
+       VALUES ($1,$2,$3,'created',$4)`,
+      [req.user.id, product, price * 100, order.id]
+    );
+
+    res.json({
+      orderId: order.id,
+      amount: price * 100,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      product
+    });
+  } catch (e) {
+    console.error("Feature order error:", e.message);
+    res.status(500).json({ error: "Unable to create payment order" });
+  }
+}
+
+app.post("/api/features/order", auth, async (req, res) => {
+  await createFeatureOrder(req, res, req.body.product);
+});
+app.post("/api/features/verify", auth, async (req, res) => {
+  try {
+    const { orderId, paymentId, signature } = req.body;
+
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ error: "Payments not configured" });
+    }
+
+    if (!orderId || !paymentId || !signature) {
+      return res.status(400).json({ error: "Payment details are required" });
+    }
+
+    const expected = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(orderId + "|" + paymentId)
+      .digest("hex");
+
+    if (
+      signature.length !== expected.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expected)
+      )
+    ) {
+      return res.status(400).json({ error: "Invalid payment signature" });
+    }
+
+    const purchase = await q(
+      `UPDATE feature_purchases
+       SET payment_id=$1,status='paid'
+       WHERE user_id=$2
+         AND order_id=$3
+         AND status='created'
+       RETURNING id,product,amount_paise`,
+      [paymentId, req.user.id, orderId]
+    );
+
+    if (!purchase.rowCount) {
+      return res.status(409).json({
+        error: "Payment already processed or order not found"
+      });
+    }
+
+    const product = purchase.rows[0].product;
+
+    if (product === "boost") {
+      await boostsReady;
+      await q(
+        `INSERT INTO profile_boosts
+         (user_id,started_at,expires_at,status)
+         VALUES ($1,NOW(),NOW()+INTERVAL '6 hours','active')`,
+        [req.user.id]
+      );
+    }
+
+    res.json({
+      ok: true,
+      product
+    });
+  } catch (e) {
+    console.error("Feature payment verification error:", e.message);
+    res.status(500).json({
+      error: "Unable to verify payment"
+    });
+  }
+});
+
+app.post("/api/features/use", auth, async (req, res) => {
+  try {
+    const { product } = req.body;
+
+    if (product !== "extra_like") {
+      return res.status(400).json({ error: "Invalid feature" });
+    }
+
+    const used = await q(
+      `UPDATE feature_purchases
+       SET used_at = NOW()
+       WHERE id = (
+         SELECT id
+         FROM feature_purchases
+         WHERE user_id = $1
+           AND product = 'extra_like'
+           AND status = 'paid'
+           AND used_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING id`,
+      [req.user.id]
+    );
+
+    if (!used.rowCount) {
+      return res.status(402).json({
+        error: "No unused Like reveal available"
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Feature use error:", e.message);
+    res.status(500).json({ error: "Unable to use feature" });
+  }
+});
+
 app.post("/api/payments/verify",auth,async(req,res)=>{const {orderId,paymentId,signature}=req.body;if(!process.env.RAZORPAY_KEY_SECRET)return res.status(503).json({error:"Payments not configured"});const expected=crypto.createHmac('sha256',process.env.RAZORPAY_KEY_SECRET).update(orderId+'|'+paymentId).digest('hex');if(!signature||signature.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))return res.status(400).json({error:'Invalid payment signature'});const sub=await q("UPDATE subscriptions SET payment_id=$1,status='paid' WHERE user_id=$2 AND order_id=$3 AND status<>'paid' RETURNING product",[paymentId,req.user.id,orderId]);if(!sub.rowCount)return res.status(409).json({error:'Payment already processed or order not found'});if(sub.rows[0].product==='call_pass'){const days=Number(process.env.CALL_PASS_DAYS||7);await q("UPDATE users SET call_pass_until=GREATEST(COALESCE(call_pass_until,NOW()),NOW())+($1::int * INTERVAL '1 day') WHERE id=$2",[days,req.user.id])}else await q("UPDATE users SET vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+INTERVAL '30 days' WHERE id=$1",[req.user.id]);res.json({ok:true})});
 
 // Admin
@@ -90,29 +647,28 @@ app.post("/api/admin/users/:id/unban",auth,async(req,res)=>{if(req.user.role!=='
 
 const onlineSockets=new Map(),socketMessageTimes=new Map();function socketRate(id){const now=Date.now(),arr=(socketMessageTimes.get(id)||[]).filter(t=>now-t<10_000);arr.push(now);socketMessageTimes.set(id,arr);return arr.length<=30}function safeInt(v){const n=Number(v);return Number.isInteger(n)&&n>0?n:null}
 io.use(async(socket,next)=>{try{const payload=verifyToken(socket.handshake.auth?.token||''),r=await q('SELECT id,name,role,status FROM users WHERE id=$1',[payload.id]);if(!r.rowCount||r.rows[0].status==='banned')throw Error();socket.user=r.rows[0];next()}catch{next(new Error('auth failed'))}});
-io.on('connection',socket=>{const uid=socket.user.id;socket.join(`user:${uid}`);onlineSockets.set(uid,(onlineSockets.get(uid)||0)+1);q('UPDATE users SET status=\'online\' WHERE id=$1',[uid]).catch(()=>{});
+io.on('connection',socket=>{const uid=socket.user.id;socket.join(`user:${uid}`);const wasOnline=onlineSockets.has(uid);onlineSockets.set(uid,(onlineSockets.get(uid)||0)+1);q('UPDATE users SET status=\'online\' WHERE id=$1',[uid]).catch(()=>{});if(!wasOnline)io.emit('presence:update',{userId:uid,status:'online'});
  socket.on('room:join',async roomId=>{const id=safeInt(roomId);if(!id)return;await q('INSERT INTO room_members(room_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,uid]);socket.join(`room:${id}`)});
  socket.on('room:message',async({roomId,body}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(roomId);if(!id)return;const member=await q('SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2',[id,uid]);if(!member.rowCount)return;const r=await q('INSERT INTO messages(sender_id,room_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at',[uid,id,body.trim()]);io.to(`room:${id}`).emit('room:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name})});
  socket.on('group:join',async groupId=>{const id=safeInt(groupId);if(!id)return;await q('INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,uid]);socket.join(`group:${id}`)});
  socket.on('group:message',async({groupId,body}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(groupId);if(!id)return;const member=await q('SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2',[id,uid]);if(!member.rowCount)return;const r=await q('INSERT INTO messages(sender_id,group_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at',[uid,id,body.trim()]);io.to(`group:${id}`).emit('group:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name})});
- socket.on('dm:join',id=>{id=safeInt(id);if(id&&id!==uid)socket.join(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`)});
- socket.on('trip:join',async tripId=>{const id=safeInt(tripId);if(!id)return;const member=await q("SELECT 1 FROM trip_members WHERE trip_id=$1 AND user_id=$2 AND status='active'",[id,uid]);if(member.rowCount)socket.join(`trip:${id}`)});
- socket.on('trip:message',async({tripId,body}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(tripId);if(!id)return;const member=await q("SELECT 1 FROM trip_members WHERE trip_id=$1 AND user_id=$2 AND status='active'",[id,uid]);if(!member.rowCount)return;const r=await q("INSERT INTO trip_messages(trip_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at",[id,uid,body.trim()]);io.to(`trip:${id}`).emit('trip:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name})});
- socket.on('dm:message',async({to,body}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(to);if(!id||id===uid)return;const b=await q('SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',[id,uid]);if(b.rowCount)return;const r=await q('INSERT INTO messages(sender_id,receiver_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at',[uid,id,body.trim()]);io.to(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`).emit('dm:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name})});
+ socket.on('dm:join',async id=>{id=safeInt(id);if(id&&id!==uid){socket.join(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`);socket.emit('presence:update',{userId:id,status:onlineSockets.has(id)?'online':'offline'});}});
+ socket.on('dm:typing',({to,typing=false}={})=>{const id=safeInt(to);if(!id||id===uid)return;io.to(`user:${id}`).emit('dm:typing',{userId:uid,typing:Boolean(typing)});});
+ socket.on('dm:message',async({to,body,replyToId=null}={})=>{if(!socketRate(uid)||typeof body!=='string'||!body.trim()||body.length>2000)return;const id=safeInt(to);if(!id||id===uid)return;await messagingFeaturesReady;const b=await q('SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',[id,uid]);if(b.rowCount)return;let rid=replyToId==null?null:safeInt(replyToId);if(rid){const ok=await q('SELECT 1 FROM messages WHERE id=$1 AND ((sender_id=$2 AND receiver_id=$3) OR (sender_id=$3 AND receiver_id=$2))',[rid,uid,id]);if(!ok.rowCount)rid=null}const r=await q('INSERT INTO messages(sender_id,receiver_id,body,reply_to_id) VALUES($1,$2,$3,$4) RETURNING id,body,created_at,read_at,reply_to_id',[uid,id,body.trim(),rid]);let reply=null;if(rid){const rr=await q('SELECT m.body,u.name sender_name FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.id=$1',[rid]);reply=rr.rows[0]||null}io.to(`dm:${Math.min(uid,id)}:${Math.max(uid,id)}`).emit('dm:message',{...r.rows[0],sender_id:uid,sender_name:socket.user.name,reply_body:reply?.body||null,reply_sender_name:reply?.sender_name||null,reactions:[]});
+
+  await createNotification(
+    id,
+    uid,
+    "message",
+    `💬 ${socket.user.name} sent you a message`,
+    "Open your conversation to reply."
+  );
+});
+ socket.on('dm:reaction',async({messageId,emoji}={})=>{await messagingFeaturesReady;if(!socketRate(uid))return;const mid=safeInt(messageId),em=typeof emoji==='string'?emoji.trim().slice(0,16):'';if(!mid||!em)return;const own=await q('SELECT sender_id,receiver_id FROM messages WHERE id=$1',[mid]);if(!own.rowCount)return;const m=own.rows[0];if(m.sender_id!==uid&&m.receiver_id!==uid)return;const pair=Math.min(m.sender_id,m.receiver_id)+':'+Math.max(m.sender_id,m.receiver_id);const existing=await q('SELECT id FROM message_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3',[mid,uid,em]);if(existing.rowCount)await q('DELETE FROM message_reactions WHERE id=$1',[existing.rows[0].id]);else await q('INSERT INTO message_reactions(message_id,user_id,emoji) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[mid,uid,em]);const rs=await q('SELECT emoji,COUNT(*)::int count,BOOL_OR(user_id=$2) mine FROM message_reactions WHERE message_id=$1 GROUP BY emoji ORDER BY emoji',[mid,uid]);io.to(`dm:${pair}`).emit('dm:reaction',{messageId:mid,reactions:rs.rows})});
  socket.on('call:offer',async({to,offer,type='video'}={})=>{const id=safeInt(to);if(!id||!offer)return;const target=await q('SELECT id,gender FROM users WHERE id=$1',[id]),me=await q('SELECT gender,call_pass_until FROM users WHERE id=$1',[uid]);if(!target.rowCount||!me.rowCount)return;const opposite=['male','female'].every(x=>[me.rows[0].gender,target.rows[0].gender].includes(x))&&me.rows[0].gender!==target.rows[0].gender,pass=me.rows[0].call_pass_until&&new Date(me.rows[0].call_pass_until)>new Date();if(opposite&&!pass)return socket.emit('call:blocked',{reason:'Call Pass required for opposite-gender calls'});io.to(`user:${id}`).emit('call:offer',{from:uid,offer,type})});
  socket.on('call:answer',({to,answer}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:answer',{from:uid,answer})});socket.on('call:ice',({to,candidate}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:ice',{from:uid,candidate})});socket.on('call:end',({to}={})=>{const id=safeInt(to);if(id)io.to(`user:${id}`).emit('call:end',{from:uid})});
- socket.on('disconnect',async()=>{const count=Math.max(0,(onlineSockets.get(uid)||1)-1);if(count)onlineSockets.set(uid,count);else{onlineSockets.delete(uid);await q("UPDATE users SET status='offline' WHERE id=$1 AND status<>'banned'",[uid]).catch(()=>{})}});
+ socket.on('disconnect',async()=>{const count=Math.max(0,(onlineSockets.get(uid)||1)-1);if(count)onlineSockets.set(uid,count);else{onlineSockets.delete(uid);io.emit('presence:update',{userId:uid,status:'offline'});await q("UPDATE users SET status='offline' WHERE id=$1 AND status<>'banned'",[uid]).catch(()=>{})}});
 });
-
-// ================= Community + Uttarakhand Travel API =================
-async function notify(userId, actorId, type, title, body=""){
-  try{
-    const r=await q(`INSERT INTO notifications(user_id,actor_id,type,title,body)
-      VALUES($1,$2,$3,$4,$5) RETURNING id,type,title,body,read_at,created_at`,
-      [userId,actorId,type,title,body]);
-    io.to(`user:${userId}`).emit("notification:new",{...r.rows[0],actor_id:actorId});
-  }catch(e){ console.error("notification:",e.message); }
-}
 async function ensureTravelProfile(userId){
   await q(`INSERT INTO travel_profiles(user_id) VALUES($1) ON CONFLICT DO NOTHING`,[userId]);
 }
@@ -128,17 +684,6 @@ function calcTripBudget(d,days,style,members){
   return {transport:shared,stay,food,local_transport:Math.round(Number(d.local_transport||0)*mult),activities,emergency,total_min:Math.round(total*.9),total_max:Math.round(total*1.15),members};
 }
 function normalizeMonths(a){return Array.isArray(a)?a.map(Number).filter(Number.isFinite):[]}
-
-app.get("/api/notifications",auth,async(req,res)=>{
-  const r=await q(`SELECT n.*,u.name actor_name,u.avatar actor_avatar
-    FROM notifications n LEFT JOIN users u ON u.id=n.actor_id
-    WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 50`,[req.user.id]);
-  res.json(r.rows);
-});
-app.post("/api/notifications/read",auth,async(req,res)=>{
-  await q("UPDATE notifications SET read_at=NOW() WHERE user_id=$1 AND read_at IS NULL",[req.user.id]);
-  res.json({ok:true});
-});
 
 app.get("/api/destinations",auth,async(req,res)=>{
   const qv=String(req.query.q||"").trim();
@@ -258,7 +803,7 @@ app.post("/api/trips/:id/request",auth,async(req,res)=>{
   const r=await q(`INSERT INTO trip_join_requests(trip_id,user_id,message) VALUES($1,$2,$3)
     ON CONFLICT(trip_id,user_id) DO UPDATE SET message=EXCLUDED.message,status='pending',updated_at=NOW()
     RETURNING *`,[trip.id,req.user.id,String(req.body?.message||"").slice(0,500)]);
-  await notify(trip.host_id,req.user.id,"trip_request","🧳 New trip join request",`${req.user.name} wants to join your trip.`);
+  await createNotification(trip.host_id,req.user.id,"trip_request","🧳 New trip join request",`${req.user.name} wants to join your trip.`);
   res.json(r.rows[0]);
 });
 app.post("/api/trips/:id/request/:requestId",auth,async(req,res)=>{
@@ -272,11 +817,11 @@ app.post("/api/trips/:id/request/:requestId",auth,async(req,res)=>{
     if(count>=trip.max_members)return res.status(409).json({error:"Trip is full"});
     await q("UPDATE trip_join_requests SET status='accepted',updated_at=NOW() WHERE id=$1",[request.id]);
     await q("INSERT INTO trip_members(trip_id,user_id) VALUES($1,$2) ON CONFLICT(trip_id,user_id) DO UPDATE SET status='active'",[trip.id,request.user_id]);
-    await notify(request.user_id,req.user.id,"trip_accept","🎒 Trip request accepted",`You're in ${trip.title}.`);
+    await createNotification(request.user_id,req.user.id,"trip_accept","🎒 Trip request accepted",`You're in ${trip.title}.`);
     res.json({ok:true,status:"accepted"});
   }else{
     await q("UPDATE trip_join_requests SET status='declined',updated_at=NOW() WHERE id=$1",[request.id]);
-    await notify(request.user_id,req.user.id,"trip_decline","Trip request update",`Your request for ${trip.title} was declined.`);
+    await createNotification(request.user_id,req.user.id,"trip_decline","Trip request update",`Your request for ${trip.title} was declined.`);
     res.json({ok:true,status:"declined"});
   }
 });
@@ -333,7 +878,7 @@ app.post("/api/trips/:id/checkin",auth,async(req,res)=>{
   const lat=Number.isFinite(Number(req.body?.latitude))?Number(req.body.latitude):null;
   const lon=Number.isFinite(Number(req.body?.longitude))?Number(req.body.longitude):null;
   const r=await q("INSERT INTO trip_checkins(trip_id,user_id,status,note,latitude,longitude) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",[req.params.id,req.user.id,status,String(req.body?.note||"").slice(0,300),lat,lon]);
-  if(status==="help"){const host=(await q("SELECT host_id,title FROM trips WHERE id=$1",[req.params.id])).rows[0];if(host)await notify(host.host_id,req.user.id,"trip_help","🚨 Trip safety alert",`${req.user.name} requested help in ${host.title}.`)}
+  if(status==="help"){const host=(await q("SELECT host_id,title FROM trips WHERE id=$1",[req.params.id])).rows[0];if(host)await createNotification(host.host_id,req.user.id,"trip_help","🚨 Trip safety alert",`${req.user.name} requested help in ${host.title}.`)}
   res.json(r.rows[0]);
 });
 app.post("/api/trips/:id/review",auth,async(req,res)=>{
@@ -425,6 +970,64 @@ app.post("/api/travel/plan",auth,async(req,res)=>{
   res.json({startPoint:start,budget,days,results:scored.map(d=>({destinationId:d.id,name:d.name,icon:d.icon,estimatedMin:Math.round(d.estimated*.9),estimatedMax:Math.round(d.estimated*1.15),difficulty:d.difficulty,tags:d.tags,reason:`Good fit for ${days} day${days>1?"s":""} from ${start} within your budget.`}))});
 });
 
-// ================= End Community + Uttarakhand Travel API =================
 
-const PORT=process.env.PORT||3000;ensureDatabase().then(()=>server.listen(PORT,()=>console.log(`VibeMeet running on port ${PORT}`))).catch(e=>{console.error("Database initialization failed:",e);process.exit(1)});process.on('SIGTERM',async()=>{await pool.end();process.exit(0)});
+
+// ================= Community Feed API =================
+app.get("/api/feed",auth,async(req,res)=>{
+  const r=await q(`SELECT p.*,u.name,u.avatar,u.college,u.verified,g.name group_name,g.icon group_icon,
+    (SELECT COUNT(*)::int FROM community_post_likes l WHERE l.post_id=p.id) like_count,
+    EXISTS(SELECT 1 FROM community_post_likes l WHERE l.post_id=p.id AND l.user_id=$1) liked,
+    (SELECT COUNT(*)::int FROM community_post_comments c WHERE c.post_id=p.id) comment_count,
+    EXISTS(SELECT 1 FROM saved_posts s WHERE s.post_id=p.id AND s.user_id=$1) saved
+    FROM community_posts p JOIN users u ON u.id=p.author_id
+    LEFT JOIN groups g ON g.id=p.group_id
+    WHERE u.status<>'banned'
+    ORDER BY p.created_at DESC LIMIT 80`,[req.user.id]);
+  res.json(r.rows);
+});
+app.post("/api/feed",auth,async(req,res)=>{
+  const body=String(req.body?.body||'').trim().slice(0,2000);
+  if(!body)return res.status(400).json({error:'Write something first'});
+  const groupId=req.body?.groupId?Number(req.body.groupId):null;
+  if(groupId){const m=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[groupId,req.user.id]);if(!m.rowCount)return res.status(403).json({error:'Join the community before posting'});}
+  const r=await q(`INSERT INTO community_posts(author_id,group_id,body) VALUES($1,$2,$3) RETURNING *`,[req.user.id,groupId,body]);
+  res.status(201).json(r.rows[0]);
+});
+app.delete("/api/feed/:id",auth,async(req,res)=>{
+  const r=await q("DELETE FROM community_posts WHERE id=$1 AND author_id=$2 RETURNING id",[req.params.id,req.user.id]);
+  if(!r.rowCount)return res.status(404).json({error:'Post not found'});res.json({ok:true});
+});
+app.post("/api/feed/:id/like",auth,async(req,res)=>{
+  const post=(await q("SELECT author_id FROM community_posts WHERE id=$1",[req.params.id])).rows[0];if(!post)return res.status(404).json({error:'Post not found'});
+  const exists=await q("SELECT 1 FROM community_post_likes WHERE post_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+  if(exists.rowCount)await q("DELETE FROM community_post_likes WHERE post_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+  else{await q("INSERT INTO community_post_likes(post_id,user_id) VALUES($1,$2)",[req.params.id,req.user.id]);if(Number(post.author_id)!==Number(req.user.id))await createNotification(post.author_id,req.user.id,'post_like','❤️ Someone liked your post',`${req.user.name} liked your community post.`)}
+  res.json({liked:!exists.rowCount});
+});
+app.get("/api/feed/:id/comments",auth,async(req,res)=>{
+  const r=await q(`SELECT c.*,u.name,u.avatar FROM community_post_comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=$1 ORDER BY c.created_at ASC LIMIT 100`,[req.params.id]);res.json(r.rows);
+});
+app.post("/api/feed/:id/comments",auth,async(req,res)=>{
+  const body=String(req.body?.body||'').trim().slice(0,500);if(!body)return res.status(400).json({error:'Comment required'});
+  const post=(await q("SELECT author_id FROM community_posts WHERE id=$1",[req.params.id])).rows[0];if(!post)return res.status(404).json({error:'Post not found'});
+  const r=await q("INSERT INTO community_post_comments(post_id,user_id,body) VALUES($1,$2,$3) RETURNING *",[req.params.id,req.user.id,body]);
+  if(Number(post.author_id)!==Number(req.user.id))await createNotification(post.author_id,req.user.id,'post_comment','💬 New comment',`${req.user.name} commented on your post.`);
+  res.status(201).json(r.rows[0]);
+});
+app.post("/api/feed/:id/save",auth,async(req,res)=>{await q("INSERT INTO saved_posts(post_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true});});
+
+app.post("/api/users/:id/follow",auth,async(req,res)=>{const id=Number(req.params.id);if(!Number.isInteger(id)||id===req.user.id)return res.status(400).json({error:'Invalid user'});const target=await q("SELECT id FROM users WHERE id=$1 AND status<>'banned'",[id]);if(!target.rowCount)return res.status(404).json({error:'User not found'});const x=await q("INSERT INTO user_follows(follower_id,following_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING follower_id",[req.user.id,id]);if(x.rowCount)await createNotification(id,req.user.id,'follow','👋 New follower',`${req.user.name} followed you.`);res.json({following:Boolean(x.rowCount)});});
+app.delete("/api/users/:id/follow",auth,async(req,res)=>{await q("DELETE FROM user_follows WHERE follower_id=$1 AND following_id=$2",[req.user.id,req.params.id]);res.json({following:false});});
+app.get("/api/users/:id/following",auth,async(req,res)=>{const r=await q("SELECT EXISTS(SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2) following",[req.user.id,req.params.id]);res.json(r.rows[0]);});
+
+// ================= End Community Feed API =================
+
+const communityTravelReady=(async()=>{
+  const schema=await fs.readFile(new URL("../db/community_travel_schema.sql",import.meta.url),"utf8");
+  await q(schema);
+  const seed=await fs.readFile(new URL("../db/travel_seed.sql",import.meta.url),"utf8");
+  await q(seed);
+})().catch(e=>{console.error("Community/travel database initialization failed:",e);throw e});
+
+const PORT=process.env.PORT||3000;
+communityTravelReady.then(()=>server.listen(PORT,()=>console.log(`VibeMeet running on port ${PORT}`))).catch(()=>process.exit(1));process.on('SIGTERM',async()=>{await pool.end();process.exit(0)});

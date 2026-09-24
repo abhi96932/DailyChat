@@ -1,16 +1,360 @@
-let token=localStorage.getItem('vm_token'),user=JSON.parse(localStorage.getItem('vm_user')||'null'),socket=null,discover=[],people=[],groups=[],events=[],activePerson=null,activeGroup=null,activeRoom=null;
+let token=localStorage.getItem('vm_token'),user=JSON.parse(localStorage.getItem('vm_user')||'null'),socket=null,discover=[],people=[],groups=[],events=[],activePerson=null,activeGroup=null,activeRoom=null,typingTimer=null;
+let notifications=[];
+let notificationsOpen=false;
+
+if(!document.getElementById('notificationStyles')){
+  const st=document.createElement('style');
+  st.id='notificationStyles';
+  st.textContent=`
+    .notificationBtn{
+      position:relative;
+      width:42px;
+      height:42px;
+      border:1px solid rgba(120,90,200,.18);
+      border-radius:14px;
+      background:rgba(255,255,255,.78);
+      font-size:19px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      transition:.2s ease;
+      flex-shrink:0;
+    }
+
+    .notificationBtn:hover{
+      transform:translateY(-1px);
+      box-shadow:0 8px 22px rgba(90,60,160,.14);
+    }
+
+    .notificationBadge{
+      position:absolute;
+      top:-5px;
+      right:-5px;
+      min-width:19px;
+      height:19px;
+      padding:0 5px;
+      border-radius:999px;
+      background:#ef3f73;
+      color:#fff;
+      font-size:10px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid #fff;
+    }
+
+    .notificationsPanel{
+      position:absolute;
+      top:58px;
+      right:20px;
+      width:390px;
+      max-width:calc(100vw - 28px);
+      background:rgba(255,255,255,.97);
+      border:1px solid rgba(120,90,200,.15);
+      border-radius:22px;
+      box-shadow:0 24px 70px rgba(45,25,90,.20);
+      overflow:hidden;
+      z-index:9999;
+      backdrop-filter:blur(20px);
+    }
+
+    .notificationsHead{
+      padding:18px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      border-bottom:1px solid rgba(120,90,200,.10);
+    }
+
+    .notificationsHead b{
+      display:block;
+      font-size:17px;
+    }
+
+    .notificationsHead small{
+      display:block;
+      margin-top:3px;
+      color:#858092;
+      font-size:11px;
+    }
+
+    .notificationReadBtn{
+      border:0;
+      background:transparent;
+      color:#7046d8;
+      font-size:11px;
+      font-weight:800;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+
+    .notificationsList{
+      max-height:440px;
+      overflow:auto;
+    }
+
+    .notificationItem{
+      display:flex;
+      gap:12px;
+      padding:14px 16px;
+      border-bottom:1px solid rgba(120,90,200,.08);
+      transition:.15s ease;
+    }
+
+    .notificationItem:hover{
+      background:rgba(124,58,237,.045);
+    }
+
+    .notificationItem.unread{
+      background:rgba(124,58,237,.065);
+    }
+
+    .notificationAvatar{
+      width:44px;
+      height:44px;
+      border-radius:15px;
+      object-fit:cover;
+      flex-shrink:0;
+      background:#f1edfb;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:20px;
+    }
+
+    .notificationContent{
+      min-width:0;
+      flex:1;
+    }
+
+    .notificationTitle{
+      font-weight:850;
+      font-size:13px;
+      line-height:1.3;
+    }
+
+    .notificationBody{
+      margin-top:3px;
+      color:#777184;
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .notificationTime{
+      margin-top:6px;
+      color:#aaa2b5;
+      font-size:10px;
+      font-weight:700;
+    }
+
+    .notificationDot{
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:#7c3aed;
+      margin-top:6px;
+      flex-shrink:0;
+    }
+
+    .notificationEmpty{
+      padding:45px 20px;
+      text-align:center;
+      color:#777184;
+    }
+
+    .notificationEmpty div{
+      font-size:35px;
+      margin-bottom:10px;
+    }
+
+    .notificationEmpty b{
+      display:block;
+      color:#282332;
+      margin-bottom:5px;
+    }
+
+    .notificationEmpty span{
+      font-size:12px;
+    }
+
+    @media(max-width:600px){
+      .notificationsPanel{
+        right:10px;
+        top:56px;
+        width:calc(100vw - 20px);
+      }
+    }
+  `;
+  document.head.appendChild(st);
+}
+function presenceHtml(status){const online=status==='online';return `<span class="presenceBadge ${online?'isOnline':'isOffline'}"><i></i>${online?'Online':'Offline'}</span>`}
 let pc=null,localStream=null,currentCallPeer=null,callMode='video',pendingCallOffer=null,pendingIce=[];
-let answerDraft={};
+let answerDraft={},profilePhotos=[],publicPhotoIndex=0,replyDraft=null,messageCache=new Map();
 const $=id=>document.getElementById(id),page=$('page');
 const api=async(url,opt={})=>{opt.headers={...(opt.headers||{}),...(token?{Authorization:'Bearer '+token}:{})};if(opt.body&&typeof opt.body!=='string'){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(opt.body)}const r=await fetch(url,opt),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const arr=s=>Array.isArray(s)?s:[];const chips=a=>arr(a).slice(0,8).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
 const avatarHtml=(a,cls='profileAvatar')=>a?`<img class="${cls}" src="${esc(a)}" alt="Profile photo" loading="lazy">`:`<div class="${cls} avatarFallback">💜</div>`;
+if(!$('multiPhotoStyles')){const st=document.createElement('style');st.id='multiPhotoStyles';st.textContent=`.multiPhotoHead{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px}.photoGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.photoTile{position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:2px solid transparent;background:#f4f3fa;cursor:grab}.photoTile.main{border-color:#8b5cf6}.photoTile img{width:100%;height:100%;object-fit:cover;display:block}.photoTileBar{position:absolute;left:0;right:0;bottom:0;padding:9px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;display:flex;justify-content:space-between;align-items:end;font-size:12px;font-weight:700}.photoTileBar button{border:0;border-radius:50%;width:28px;height:28px;background:rgba(255,255,255,.9);color:#111;font-size:18px;cursor:pointer}.mainBadge{position:absolute;top:9px;left:9px;background:#fff;color:#6d28d9;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:900}.photoEmpty{grid-column:1/-1;padding:28px;text-align:center;border:1px dashed #cfc8e8;border-radius:18px;color:#777}.publicGalleryMain{position:relative;aspect-ratio:4/5;max-height:620px;border-radius:24px;overflow:hidden;background:#f4f3fa}.publicGalleryPhoto{width:100%;height:100%;object-fit:cover;display:block}.galleryArrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.88);font-size:30px;cursor:pointer}.galleryArrow.left{left:14px}.galleryArrow.right{right:14px}.galleryDots{display:flex;justify-content:center;gap:7px;padding-top:12px}.galleryDot{width:8px;height:8px;border:0;border-radius:50%;background:#d4d0df;cursor:pointer}.galleryDot.active{background:#7c3aed;width:22px;border-radius:9px}.publicProfileCard{overflow:hidden}@media(max-width:700px){.multiPhotoHead{align-items:flex-start;flex-direction:column}.photoGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`;document.head.appendChild(st)}
 const profileComplete=u=>!!(u?.name&&u?.age&&u?.city&&u?.college&&u?.course&&u?.bio&&arr(u?.interests).length&&u?.mode&&u?.gender&&u?.match_preference);
 function toast(x){alert(x)}function hasPass(u=user){return !!(u?.call_pass_until&&new Date(u.call_pass_until)>new Date())}
-function save(u,t){user=u;token=t;localStorage.setItem('vm_user',JSON.stringify(u));localStorage.setItem('vm_token',t);updateHeader();connect();show('app');render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}
+function save(u,t){
+  user=u;
+  token=t;
+
+  localStorage.setItem('vm_user',JSON.stringify(u));
+  localStorage.setItem('vm_token',t);
+
+  updateHeader();
+  connect();
+  show('app');
+
+  loadNotifications();
+
+  render('home').then(()=>{
+    if(!profileComplete(user))openOnboarding(true);
+  });
+}
 function show(id){$('auth').classList.toggle('hidden',id!=='auth');$('app').classList.toggle('hidden',id!=='app')}
 function updateHeader(){if($('me'))$('me').textContent=user?`Hi, ${user.name}${user.is_guest?' · Guest':''}`:'';if($('adminNav'))$('adminNav').classList.toggle('hidden',user?.role!=='admin')}
+function notificationIcon(type){
+  return ({
+    like:'❤️',
+    match:'💞',
+    message:'💬',
+    super_like:'⭐',
+    profile_view:'👀',
+    compliment:'💌',
+    community:'👥',
+    event:'📅',
+    boost:'🚀',
+    system:'✨'
+  })[type]||'🔔';
+}
+
+function notificationTime(value){
+  if(!value)return '';
+  const d=new Date(value);
+  const diff=Math.max(0,Date.now()-d.getTime());
+  const mins=Math.floor(diff/60000);
+  if(mins<1)return 'Just now';
+  if(mins<60)return `${mins}m ago`;
+  const hours=Math.floor(mins/60);
+  if(hours<24)return `${hours}h ago`;
+  const days=Math.floor(hours/24);
+  if(days<7)return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function renderNotifications(){
+  const list=$('notificationsList');
+  const badge=$('notificationBadge');
+
+  if(!list)return;
+
+  const unread=notifications.filter(n=>!n.read_at).length;
+
+  if(badge){
+    badge.textContent=unread>99?'99+':String(unread);
+    badge.classList.toggle('hidden',unread===0);
+  }
+
+  if(!notifications.length){
+    list.innerHTML=`
+      <div class="notificationEmpty">
+        <div>🔔</div>
+        <b>No notifications yet</b>
+        <span>You're all caught up.</span>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML=notifications.map(n=>{
+    const avatar=n.actor_avatar
+      ? `<img class="notificationAvatar" src="${esc(n.actor_avatar)}" alt="">`
+      : `<div class="notificationAvatar">${notificationIcon(n.type)}</div>`;
+
+    return `
+      <div class="notificationItem ${n.read_at?'':'unread'}">
+        ${avatar}
+        <div class="notificationContent">
+          <div class="notificationTitle">${esc(n.title)}</div>
+          ${n.body?`<div class="notificationBody">${esc(n.body)}</div>`:''}
+          <div class="notificationTime">${notificationTime(n.created_at)}</div>
+        </div>
+        ${n.read_at?'':'<span class="notificationDot"></span>'}
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadNotifications(){
+  if(!token||!user)return;
+
+  try{
+    notifications=await api('/api/notifications');
+    renderNotifications();
+  }catch(e){
+    console.error('Notification load failed:',e);
+  }
+}
+
+async function markNotificationsRead(){
+  if(!token)return;
+
+  try{
+    await api('/api/notifications/read',{method:'POST'});
+    notifications=notifications.map(n=>({...n,read_at:n.read_at||new Date().toISOString()}));
+    renderNotifications();
+  }catch(e){
+    console.error('Notification read failed:',e);
+  }
+}
+
+function addLiveNotification(n){
+  if(!n)return;
+
+  notifications=[n,...notifications.filter(x=>Number(x.id)!==Number(n.id))].slice(0,50);
+  renderNotifications();
+
+  if(n.title)toast(n.title);
+}
+
+$('notificationsBtn')?.addEventListener('click',async e=>{
+  e.stopPropagation();
+
+  if(!user||!token)return;
+
+  notificationsOpen=!notificationsOpen;
+  $('notificationsPanel')?.classList.toggle('hidden',!notificationsOpen);
+
+  if(notificationsOpen){
+    await loadNotifications();
+  }
+});
+
+$('notificationsRead')?.addEventListener('click',async e=>{
+  e.stopPropagation();
+  await markNotificationsRead();
+});
+
+document.addEventListener('click',e=>{
+  const panel=$('notificationsPanel');
+  const btn=$('notificationsBtn');
+
+  if(notificationsOpen &&
+     panel &&
+     !panel.contains(e.target) &&
+     btn &&
+     !btn.contains(e.target)){
+    notificationsOpen=false;
+    panel.classList.add('hidden');
+  }
+});
 let registering=true;
 $('form').onsubmit=async e=>{e.preventDefault();try{const body=registering?{name:$('name').value,email:$('email').value,password:$('password').value,age:Number($('age').value)||null,city:$('city').value,gender:$('gender').value,matchPreference:$('matchPreference').value,mode:$('mode').value}:{email:$('email').value,password:$('password').value};const d=await api(registering?'/api/auth/register':'/api/auth/login',{method:'POST',body});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
 $('guestBtn').onclick=async()=>{try{const d=await api('/api/auth/guest',{method:'POST'});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
@@ -18,8 +362,52 @@ $('switch').onclick=()=>{registering=!registering;$('authTitle').textContent=reg
 $('logout').onclick=()=>{if(socket)socket.disconnect();localStorage.clear();location.reload()};$('hamb').onclick=()=>document.querySelector('aside').classList.toggle('open');
 document.querySelectorAll('aside button[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('aside button[data-page]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render(b.dataset.page);document.querySelector('aside').classList.remove('open')});
 
-function msgHtml(m){const mine=Number(m.sender_id??m.user_id??m.from_id)===Number(user?.id);const name=m.sender_name||m.name||m.sender||(mine?user?.name:'Member');const body=m.body||m.message||'';const time=m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const image=m.attachment_data&&m.attachment_mime?`<img src="${esc(m.attachment_data)}" alt="Shared image" style="max-width:220px;border-radius:14px;display:block;margin-top:7px">`:'';return `<div class="msg ${mine?'mine':''}">${mine?'':`<div style="font-size:11px;font-weight:800;opacity:.7;margin-bottom:3px">${esc(name)}</div>`}<div>${esc(body)}</div>${image}${time?`<small style="display:block;margin-top:4px;opacity:.55;font-size:10px">${esc(time)}</small>`:''}</div>`}
-function bindComposer(onSend){const form=$('composer'),input=$('body');if(!form||!input)return;form.onsubmit=e=>{e.preventDefault();const body=input.value.trim();if(!body)return;onSend(body);input.value='';input.focus()}}
+function msgHtml(m){messageCache.set(Number(m.id),m);const mine=Number(m.sender_id??m.user_id??m.from_id)===Number(user?.id);const name=m.sender_name||m.name||m.sender||(mine?user?.name:'Member');const body=m.body||m.message||'';const time=m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const image=m.attachment_data&&m.attachment_mime?`<button type="button" class="chatImagePreview" onclick="openChatImage(decodeURIComponent('${encodeURIComponent(m.attachment_data)}'))" aria-label="Open image"><img src="${esc(m.attachment_data)}" alt="Shared image" style="max-width:220px;border-radius:14px;display:block;margin-top:7px;cursor:zoom-in"></button>`:'';const receipt=mine?`<span class="msgReceipt" data-msg-id="${m.id||''}">${m.read_at?'Seen ✓✓':'Sent ✓'}</span>`:'';const reply=m.reply_to_id?`<button type="button" class="msgReplyQuote" onclick="jumpToMessage(${m.reply_to_id})"><b>${esc(m.reply_sender_name||'Reply')}</b><span>${esc(m.reply_body||'[Message]')}</span></button>`:'';const reactions=Array.isArray(m.reactions)&&m.reactions.length?`<div class="msgReactions">${m.reactions.map(r=>`<button type="button" class="reactionPill ${r.mine?'mine':''}" onclick="reactToMessage(${m.id},'${esc(r.emoji)}')">${esc(r.emoji)} ${r.count}</button>`).join('')}</div>`:'';const tools=`<div class="msgTools"><button type="button" onclick="replyToMessage(${m.id})">↩ Reply</button><button type="button" onclick="reactToMessage(${m.id},'❤️')">❤️</button><button type="button" onclick="reactToMessage(${m.id},'😂')">😂</button><button type="button" onclick="reactToMessage(${m.id},'👍')">👍</button></div>`;return `<div class="msg ${mine?'mine':''}" data-msg-id="${m.id||''}">${mine?'':`<div style="font-size:11px;font-weight:800;opacity:.7;margin-bottom:3px">${esc(name)}</div>`}${reply}<div>${esc(body)}</div>${image}${reactions}${time?`<small style="display:block;margin-top:4px;opacity:.55;font-size:10px">${esc(time)} ${receipt}</small>`:receipt}${tools}</div>`}
+function openChatImage(src){
+  if(!src) return;
+  const box=document.createElement("div");
+  box.className="chatImageLightbox";
+  box.innerHTML=`<button type="button" class="chatImageClose" aria-label="Close image">×</button><img src="${esc(src)}" alt="Full size shared image">`;
+  box.addEventListener("click",e=>{if(e.target===box||e.target.classList.contains("chatImageClose"))box.remove()});
+  document.body.appendChild(box);
+}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelector(".chatImageLightbox")?.remove()});
+
+async function fileToChatImage(file){
+  if(!file) throw Error('Choose an image first.');
+  if(!/^image\/(jpeg|png|webp)$/i.test(file.type)) throw Error('Please choose a JPG, PNG or WebP image.');
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(Error('Could not read this image.'));im.src=url});
+    const maxSide=1400,scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    for(const quality of [.88,.82,.76,.70,.64,.58]){
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',quality));
+      if(blob&&blob.size<=1.9*1024*1024)return await blobToDataUrl(blob);
+    }
+  }finally{URL.revokeObjectURL(url)}
+  throw Error('This image could not be compressed below 2 MB. Please choose another photo.');
+}
+async function sendChatImage(){
+  if(!activePerson)return;
+  const input=$('chatImageInput'),file=input?.files?.[0];
+  if(!file)return;
+  try{
+    const data=await fileToChatImage(file);
+    const m=await api(`/api/dm/${activePerson.id}/image`,{method:'POST',body:{dataUrl:data}});
+    // The server broadcasts the saved image through Socket.IO. Do not append the API response here, or the sender sees it twice.
+    toast('📷 Image sent');
+  }catch(e){toast(e.message)}finally{if(input)input.value=''}
+}
+function setReplyBar(){const composer=document.querySelector('#composer');if(!composer)return;let bar=document.querySelector('#replyBar');if(!replyDraft){bar?.remove();return}if(!bar){bar=document.createElement('div');bar.id='replyBar';bar.className='replyBar';composer.parentNode.insertBefore(bar,composer)}bar.innerHTML=`<div><b>Replying to ${esc(replyDraft.sender_name||'message')}</b><span>${esc(replyDraft.body||'[Image]')}</span></div><button type="button" onclick="cancelReply()">×</button>`}
+function replyToMessage(id){const m=messageCache.get(Number(id));if(!m)return;replyDraft=m;setReplyBar();document.querySelector('#body')?.focus()}
+function cancelReply(){replyDraft=null;setReplyBar()}
+function jumpToMessage(id){const el=document.querySelector(`.msg[data-msg-id="${id}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('msgFlash');setTimeout(()=>el.classList.remove('msgFlash'),1200)}}
+function updateMessageReactions(messageId,reactions){const m=messageCache.get(Number(messageId));if(m)m.reactions=reactions||[];const el=document.querySelector(`.msg[data-msg-id="${messageId}"]`);if(!el)return;const old=el.querySelector('.msgReactions');const html=Array.isArray(reactions)&&reactions.length?`<div class="msgReactions">${reactions.map(r=>`<button type="button" class="reactionPill ${r.mine?'mine':''}" onclick="reactToMessage(${messageId},'${esc(r.emoji)}')">${esc(r.emoji)} ${r.count}</button>`).join('')}</div>`:'';if(old)old.outerHTML=html;else{const tools=el.querySelector('.msgTools');if(tools)tools.insertAdjacentHTML('beforebegin',html)}}
+function reactToMessage(id,emoji){if(!socket||!id)return;socket.emit('dm:reaction',{messageId:Number(id),emoji})}
+async function openChatSafety(){if(!activePerson)return;const choice=prompt(`Chat safety for ${activePerson.name}\n\n1 = Unmatch\n2 = Block\n3 = Report\n\nEnter 1, 2 or 3:`);if(!choice)return;try{if(choice==='1'){if(!(await professionalConfirm({title:'Unmatch this person?',message:`Your connection with ${activePerson.name} will be removed from Matches and this chat.`,name:activePerson.name,photo:activePerson.avatar,confirmText:'Yes, unmatch'})))return;await api(`/api/matches/${activePerson.id}`,{method:'DELETE'});toast('Unmatched');activePerson=null;replyDraft=null;messageCache.clear();render('messages')}else if(choice==='2'){if(!confirm(`Block ${activePerson.name}? They will no longer be able to interact with you.`))return;await api(`/api/users/${activePerson.id}/block`,{method:'POST'});toast('User blocked');activePerson=null;replyDraft=null;messageCache.clear();render('messages')}else if(choice==='3'){const reason=prompt('Why are you reporting this person?');if(!reason?.trim())return;const details=prompt('Additional details (optional):')||'';await api('/api/reports',{method:'POST',body:{reportedUserId:activePerson.id,reason:reason.trim(),details}});toast('Report submitted');}}catch(e){toast(e.message)}}
+function bindComposer(onSend,onTyping){const form=$('composer'),input=$('body');if(!form||!input)return;input.oninput=()=>{if(!onTyping)return;const active=!!input.value.trim();onTyping(active);clearTimeout(typingTimer);if(active)typingTimer=setTimeout(()=>onTyping(false),3000)};input.onblur=()=>{if(onTyping){clearTimeout(typingTimer);onTyping(false)}};form.onsubmit=e=>{e.preventDefault();const body=input.value.trim();if(!body)return;if(onTyping){clearTimeout(typingTimer);onTyping(false)};onSend(body);input.value='';input.focus()}}
 function appendLive(m){const box=$('msgs');if(box){box.insertAdjacentHTML('beforeend',msgHtml(m));box.scrollTop=box.scrollHeight}}
 
 function personCard(x,i){return `<div class="card personCard"><div class="personTop">${avatarHtml(x.avatar,'profilePic')}<div><h3 style="margin:3px 0">${esc(x.name)} ${x.verified?'✓':''}</h3><div class="muted">${x.age||'—'} · ${esc(x.city||'')} · ${esc(x.course||'')}</div><div class="chips" style="margin-top:7px">${chips(x.interests)}</div></div></div><div class="score">${x.match_score||''}${x.match_score?'%':''}</div>${x.reasons?.length?`<div><b>Why you match</b><div class="chips">${x.reasons.map(r=>`<span class="reason">✦ ${esc(r)}</span>`).join('')}</div></div>`:''}<div class="muted">${esc(x.bio||'No bio yet')}</div><div class="actions"><button class="pass" onclick="swipe(${i},'pass')">✕ Pass</button><button class="like" onclick="swipe(${i},'like')">♥ Like</button></div><button class="secondary full" onclick="viewProfile(${x.id})">View profile</button></div>`}
@@ -38,6 +426,68 @@ async function previewOnboardPhoto(e){
 async function finishOnboarding(){try{const body={name:user.name,age:user.age,city:user.city,college:user.college,course:user.course,gender:user.gender||'prefer_not_to_say',mode:user.mode||'dating',matchPreference:user.match_preference||'any',relationshipIntent:user.relationship_intent||'open_to_connections',bio:user.bio||'',interests:arr(user.interests),languages:arr(user.languages),avatar:user.avatar||''};const d=await api('/api/me',{method:'PATCH',body});user={...user,...d};localStorage.setItem('vm_user',JSON.stringify(user));updateHeader();$('onboardingModal').classList.add('hidden');toast('✨ Your VibeMeet profile is ready!');render('profile')}catch(e){toast(e.message)}}
 
 async function render(p){try{if(p==='home')return renderHome();if(p==='matches')return renderMatches();if(p==='groups')return renderGroups();if(p==='events')return renderEvents();if(p==='people')return renderPeople();if(p==='messages')return renderMessages();if(p==='calls')return renderCalls();if(p==='profile')return renderProfile();if(p==='compatibility')return renderCompatibility();if(p==='vip')return renderVip();if(p==='admin')return renderAdmin()}catch(e){page.innerHTML=`<div class="pagepad"><div class="card"><h3>Something went wrong</h3><p class="muted">${esc(e.message)}</p><button class="primary" onclick="render('home')">Back to Discover</button></div></div>`}}
+
+async function buyExtraLike(){
+  try{
+    const order = await api('/api/features/order',{
+      method:'POST',
+      body:{product:'extra_like'}
+    });
+
+    await loadRazorpay();
+
+    const checkout = new Razorpay({
+      key:order.keyId,
+      amount:order.amount,
+      currency:'INR',
+      name:'VibeMeet',
+      description:'Reveal 1 more Like You · ₹19',
+      order_id:order.orderId,
+
+      prefill:{
+        name:user?.name || '',
+        email:user?.email || ''
+      },
+
+      theme:{
+        color:'#6b4ce6'
+      },
+
+      modal:{
+        ondismiss:()=>toast('Payment cancelled')
+      },
+
+      handler:async payment=>{
+        try{
+          await api('/api/features/verify',{
+            method:'POST',
+            body:{
+              orderId:payment.razorpay_order_id,
+              paymentId:payment.razorpay_payment_id,
+              signature:payment.razorpay_signature
+            }
+          });
+
+          await api('/api/features/use',{
+            method:'POST',
+            body:{product:'extra_like'}
+          });
+
+          toast('💌 One more Like You revealed!');
+          renderMatches('likes');
+
+        }catch(e){
+          toast(e.message);
+        }
+      }
+    });
+
+    checkout.open();
+
+  }catch(e){
+    toast(e.message);
+  }
+}
 
 async function renderHome(){
   discover=await api('/api/discover');
@@ -70,22 +520,721 @@ async function renderHome(){
   if(!window.discoverKeyHandler){window.discoverKeyHandler=true;document.addEventListener('keydown',e=>{if($('onboardingModal')&&!$('onboardingModal').classList.contains('hidden'))return;if(!['ArrowLeft','ArrowRight'].includes(e.key))return;if(location.pathname!=='/')return;const idx=discover.findIndex(x=>Number(x.id)===Number(filtered[0]?.id));if(idx<0)return;swipe(idx,e.key==='ArrowRight'?'like':'pass')})}
 }
 function setDiscoverFilter(value){window.discoverFilter=value;render('home')}
-async function swipe(i,direction){const x=discover[i];if(!x)return;try{const r=await api('/api/swipes',{method:'POST',body:{targetId:x.id,direction}});if(r.matched)toast('💞 It’s a match! You both liked each other.');discover.splice(i,1);render('home')}catch(e){toast(e.message)}}
-async function renderMatches(){const m=await api('/api/matches');page.innerHTML=`<div class="pagepad"><div class="title"><div><div class="eyebrow">MUTUAL LIKES</div><h2>Your Matches</h2><p class="muted">Only mutual likes become matches.</p></div></div><div class="grid">${m.map(x=>`<div class="card personCard"><div class="personTop">${avatarHtml(x.avatar,'profilePic')}<div><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span class="chip">💞 Matched</span></div></div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div>`).join('')||'<div class="card"><h3>No matches yet</h3><p class="muted">Like people you vibe with. When they like you back, you’ll match.</p><button class="primary" onclick="render(\'home\')">Start discovering</button></div>'}</div></div>`}
-function messageUser(id,name){activePerson={id:Number(id),name};render('messages')}
-async function viewProfile(id){try{const list=await api('/api/people');const x=list.find(p=>Number(p.id)===Number(id));if(!x)return toast('Profile unavailable');activePerson={id:x.id,name:x.name};page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="render('home')">← Back</button><div class="card" style="max-width:850px;margin:auto"><div class="personTop"><div class="profilePic" style="width:120px;height:120px;font-size:54px">${x.avatar||'💜'}</div><div><div class="eyebrow">VIBEMEET PROFILE</div><h1>${esc(x.name)} ${x.verified?'✓':''}</h1><p class="muted">${x.age||'—'} · ${esc(x.city||'')} · ${esc(x.college||'')} · ${esc(x.course||'')}</p><div class="chips">${chips(x.interests)}</div></div></div><hr style="border:0;border-top:1px solid #eee;margin:20px 0"><h3>About</h3><p class="muted">${esc(x.bio||'No bio yet')}</p><div class="actions"><button class="primary" onclick="messageUser(${x.id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="startCall(${x.id},'video')">📹 Video call</button><button class="secondary" onclick="startCall(${x.id},'voice')">📞 Voice</button></div></div></div>`}catch(e){toast(e.message)}}
+function showMatchCelebration(x){const old=document.getElementById('matchCelebration');if(old)old.remove();const modal=document.createElement('div');modal.id='matchCelebration';modal.className='matchCelebration';modal.innerHTML=`<div class="matchCelebrateCard"><button class="matchCelebrateClose" onclick="document.getElementById('matchCelebration')?.remove()">×</button><div class="matchConfetti" aria-hidden="true">✦ ✨ 💗 ✨ ✦</div><div class="matchSpark">💞</div><div class="eyebrow">IT’S A MATCH!</div><h2>You and ${esc(x.name||'someone special')} liked each other</h2><p class="muted">It’s mutual! Your connection is ready. Say hello and start something genuine.</p><div class="matchCelebratePill">✨ Mutual chemistry unlocked</div><div class="matchCelebratePhoto">${avatarHtml(x.avatar,'matchCelebrateImg')}</div><div class="actions matchCelebrateActions"><button class="primary" onclick="document.getElementById('matchCelebration')?.remove();messageUser(${Number(x.id||x.user_id)},'${esc(x.name||'').replace(/'/g,"\\'")}')">💬 Send a message</button><button class="secondary" onclick="document.getElementById('matchCelebration')?.remove();render('matches')">View matches</button></div></div>`;document.body.appendChild(modal);requestAnimationFrame(()=>modal.classList.add('show'))}
+async function swipe(i,direction){const x=discover[i];if(!x)return;try{const r=await api('/api/swipes',{method:'POST',body:{targetId:x.id,direction}});discover.splice(i,1);if(r.matched){showMatchCelebration(x);return}render('home')}catch(e){toast(e.message)}}
+async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab=tab;const [m,likes]=await Promise.all([api('/api/matches'),api('/api/likes')]);const incoming=likes.incoming||[],outgoing=likes.outgoing||[];const tabBtn=(key,label,count)=>`<button class="matchTab ${tab===key?'active':''}" onclick="renderMatches('${key}')">${label}<span>${count}</span></button>`;const matchCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge">💞 Match</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">You both liked each other ✨</div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button><button class="danger" onclick="unmatchFromMatches(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}','${esc(x.avatar||'')}')">💔 Unmatch</button></div></div></article>`;const likeCard=x=>`<article class="matchCardPro likeCard"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge newLike">${x.super_liked?'⭐ Super Like':'✨ New like'}</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Liked you • ${esc(x.course||'')}</div><div class="actions"><button class="primary" onclick="respondToLike(${x.user_id},'like')">❤️ Like back</button><button class="secondary" onclick="respondToLike(${x.user_id},'pass')">Pass</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div></article>`;const sentCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge sentLike">💙 Sent like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Waiting for them to like you back</div><div class="actions"><button class="secondary" onclick="viewProfile(${x.user_id})">View profile</button></div></div></article>`;let title='',sub='',cards='';if(tab==='likes'){title='Likes you';sub='People who already liked you. Like them back to make an instant match.';const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
+if((likes.incomingCount||0)>0){
+  const visibleCount = vipActive ? incoming.length : 0;
+  cards = incoming.slice(0, visibleCount).map(likeCard).join('');
 
-async function renderGroups(){groups=await api('/api/groups');const cats=[...new Set(groups.map(g=>g.category).filter(Boolean))];page.innerHTML=`<div class="pagepad vibePage"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR CIRCLES ✨</div><h1>Find your people.</h1><p>Study buddies, travel crews, hobby friends and people you actually vibe with.</p></div><div class="heroBadge">${groups.length}<span>communities</span></div></div><div class="filterRow"><button class="filterPill active">✨ For you</button>${cats.slice(0,5).map(c=>`<button class="filterPill">${esc(c)}</button>`).join('')}</div><div class="title"><div><h2>Trending communities</h2><p class="muted">Join a circle first. Then discover people inside it.</p></div></div><div class="groupGrid">${groups.map((g,i)=>`<article class="groupCardNew"><div class="groupCover"><span class="groupIcon">${g.icon||'✨'}</span><span class="groupLive">● ${g.members} vibes</span></div><div class="groupContent"><span class="miniTag">${esc(g.category||'Community')}</span><h3>${esc(g.name)}</h3><p>${esc(g.description)}</p><div class="groupMeta"><span>👥 ${g.members} members</span><span>${g.joined?'✓ Joined':'Open to join'}</span></div><div class="actions">${g.joined?`<button class="primary" onclick="openGroup(${i})">Open circle →</button><button class="iconBtn" title="Leave" onclick="leaveGroup(${g.id})">↪</button>`:`<button class="primary" onclick="joinGroup(${g.id})">Join circle ✨</button>`}</div></div></article>`).join('')||'<div class="emptyState"><div>🌱</div><h3>Your next circle is waiting.</h3><p class="muted">Complete your profile to unlock better community recommendations.</p></div>'}</div></div>`}
+  if(!vipActive && likes.lockedCount>0){
+    cards+=`
+      <article class="card vipLikesUpsell">
+        <div class="vipLikesIcon">💌</div>
+        <div>
+          <div class="eyebrow">MORE PEOPLE LIKE YOU</div>
+          <h3>${likes.lockedCount} more ${likes.lockedCount===1?'person':'people'} are waiting</h3>
+          <p class="muted">
+            Reveal the next person who liked you for just ₹19.
+            VIP members see everyone automatically.
+          </p>
+
+          <button class="primary" onclick="buyExtraLike()">
+            💌 Reveal 1 more · ₹19
+          </button>
+
+          <button class="secondary" style="margin-left:8px" onclick="render('vip')">
+            💎 Get VIP
+          </button>
+        </div>
+      </article>
+    `;
+  }
+}else{cards=''} }else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incoming.length)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}
+function professionalConfirm({title='Unmatch this person?',message='This will remove your match and end the connection.',name='',photo='',confirmText='Unmatch',danger=true}={}){return new Promise(resolve=>{const existing=$('professionalConfirmModal');if(existing)existing.remove();const modal=document.createElement('div');modal.id='professionalConfirmModal';modal.className='proConfirmOverlay';const safePhoto=photo&&String(photo).startsWith('data:image/')?`<img src="${esc(photo)}" alt="" class="proConfirmAvatar">`:'<div class="proConfirmAvatar proConfirmFallback">💔</div>';modal.innerHTML=`<div class="proConfirmCard" role="dialog" aria-modal="true" aria-labelledby="proConfirmTitle"><button class="proConfirmClose" aria-label="Close">×</button><div class="proConfirmIcon">💔</div><div class="proConfirmPerson">${safePhoto}<div><div class="proConfirmEyebrow">CONFIRM ACTION</div><h3 id="proConfirmTitle">${esc(title)}</h3>${name?`<div class="proConfirmName">${esc(name)}</div>`:''}</div></div><p class="proConfirmMessage">${esc(message)}</p><div class="proConfirmNote">This action can’t be undone from this screen.</div><div class="proConfirmActions"><button class="secondary proConfirmCancel">Cancel</button><button class="${danger?'danger':'primary'} proConfirmOk">${esc(confirmText)}</button></div></div>`;document.body.appendChild(modal);const finish=value=>{modal.remove();resolve(value)};modal.querySelector('.proConfirmClose').onclick=()=>finish(false);modal.querySelector('.proConfirmCancel').onclick=()=>finish(false);modal.querySelector('.proConfirmOk').onclick=()=>finish(true);modal.onclick=e=>{if(e.target===modal)finish(false)};const key=e=>{if(e.key==='Escape'){finish(false);document.removeEventListener('keydown',key)}};document.addEventListener('keydown',key);setTimeout(()=>modal.querySelector('.proConfirmOk')?.focus(),30)})}
+
+async function unmatchFromMatches(userId,name,photo=''){if(!(await professionalConfirm({title:'Unmatch this person?',message:`Your match with ${name} will be removed. You won’t be able to continue this connection unless you match again in the future.`,name,photo,confirmText:'Yes, unmatch'})))return;try{await api(`/api/matches/${userId}`,{method:'DELETE'});toast(`Unmatched with ${name}`);renderMatches('matches')}catch(e){toast(e.message)}}
+async function respondToLike(userId,direction){try{const r=await api('/api/swipes',{method:'POST',body:{targetId:userId,direction}});if(r.matched){const p=(await api('/api/people')).find(x=>Number(x.id)===Number(userId))||{id:userId,name:'your match',avatar:''};showMatchCelebration(p)}else{toast(direction==='like'?'Like sent 💗':'Passed');renderMatches('likes')}}catch(e){toast(e.message)}}
+function messageUser(id,name){activePerson={id:Number(id),name};render('messages')}
+async function viewProfile(id,preserveGallery=false){try{const list=await api('/api/people');const x=list.find(p=>Number(p.id)===Number(id));if(!x)return toast('Profile unavailable');activePerson={id:x.id,name:x.name};const photos=await api(`/api/users/${x.id}/photos`).catch(()=>[]);const gallery=photos.length?photos:[{data:x.avatar||'',id:0}];if(!preserveGallery)publicPhotoIndex=0;const draw=()=>{const ph=gallery[publicPhotoIndex]?.data||x.avatar||'';page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="render('home')">← Back</button><div class="card publicProfileCard" style="max-width:900px;margin:auto"><div class="publicGallery"><div class="publicGalleryMain">${avatarHtml(ph,'publicGalleryPhoto')}${gallery.length>1?`<button class="galleryArrow left" onclick="publicGalleryMove(-1)">‹</button><button class="galleryArrow right" onclick="publicGalleryMove(1)">›</button>`:''}</div><div class="galleryDots">${gallery.map((_,i)=>`<button class="galleryDot ${i===publicPhotoIndex?'active':''}" onclick="publicGalleryGo(${i})"></button>`).join('')}</div></div><div class="personTop" style="margin-top:22px"><div><div class="eyebrow">VIBEMEET PROFILE</div><h1>${esc(x.name)} ${x.verified?'✓':''}</h1><p class="muted">${x.age||'—'} · ${esc(x.city||'')} · ${esc(x.college||'')} · ${esc(x.course||'')}</p><div class="chips">${chips(x.interests)}</div></div></div><hr style="border:0;border-top:1px solid #eee;margin:20px 0"><h3>About</h3><p class="muted">${esc(x.bio||'No bio yet')}</p><div class="actions"><button class="primary" onclick="messageUser(${x.id},'${esc(x.name).replace(/'/g,"\'")}')">💬 Message</button><button class="secondary" onclick="startCall(${x.id},'video')">📹 Video call</button><button class="secondary" onclick="startCall(${x.id},'voice')">📞 Voice</button></div></div></div>`};draw()}catch(e){toast(e.message)}}
+function publicGalleryMove(d){publicPhotoIndex=(publicPhotoIndex+d+Math.max(1,document.querySelectorAll('.galleryDot').length))%Math.max(1,document.querySelectorAll('.galleryDot').length);viewProfile(activePerson.id,true)}
+function publicGalleryGo(i){publicPhotoIndex=i;viewProfile(activePerson.id,true)}
+
+
+if(!$('matchCelebrationStyles')){const st=document.createElement('style');st.id='matchCelebrationStyles';st.textContent=`.matchCelebration{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,18,35,.72);backdrop-filter:blur(12px);opacity:0;transition:opacity .2s ease}.matchCelebration.show{opacity:1}.matchCelebrateCard{position:relative;width:min(460px,94vw);padding:30px 24px;border-radius:30px;background:linear-gradient(145deg,#fff,#f8f5ff);text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.35);transform:translateY(16px) scale(.97);transition:transform .25s ease}.matchCelebration.show .matchCelebrateCard{transform:translateY(0) scale(1)}.matchCelebrateClose{position:absolute;right:14px;top:14px;width:38px;height:38px;border:0;border-radius:50%;background:#eeeaf7;font-size:25px;cursor:pointer}.matchConfetti{font-size:20px;letter-spacing:7px;margin:0 0 4px;animation:matchFloat 1.8s ease-in-out infinite}.matchSpark{width:78px;height:78px;margin:2px auto 10px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:42px;background:linear-gradient(135deg,#eef7ff,#f8eaff);box-shadow:0 12px 30px rgba(91,77,230,.14);animation:matchPop .55s cubic-bezier(.2,.9,.2,1.2)}.matchCelebrateCard h2{font-size:30px;line-height:1.12;margin:8px 0}.matchCelebratePill{display:inline-flex;align-items:center;justify-content:center;padding:8px 13px;border-radius:999px;background:#f3efff;color:#5b4de6;font-size:12px;font-weight:800;margin:2px 0 6px}.matchCelebrateCard{overflow:hidden}.matchCelebrateCard:before{content:"";position:absolute;width:180px;height:180px;border-radius:50%;background:rgba(91,77,230,.08);top:-90px;left:-90px}.matchCelebrateCard:after{content:"";position:absolute;width:160px;height:160px;border-radius:50%;background:rgba(236,72,153,.08);right:-80px;bottom:-80px}@keyframes matchPop{0%{transform:scale(.65) rotate(-8deg);opacity:.2}70%{transform:scale(1.08) rotate(3deg)}100%{transform:scale(1) rotate(0);opacity:1}}@keyframes matchFloat{50%{transform:translateY(-5px)}}.matchCelebratePhoto{width:150px;height:150px;margin:18px auto;border-radius:50%;overflow:hidden;background:#eeeaf7;border:6px solid #fff;box-shadow:0 15px 40px rgba(91,77,230,.18)}.matchCelebrateImg{width:100%;height:100%;object-fit:cover;display:block}.matchCelebrateActions{justify-content:center}.matchCelebrateActions button{min-width:150px}@media(max-width:520px){.matchCelebrateCard{padding:26px 18px}.matchCelebrateCard h2{font-size:25px}.matchCelebratePhoto{width:125px;height:125px}}`;document.head.appendChild(st)}
+if(!$('matchProStyles')){const st=document.createElement('style');st.id='matchProStyles';st.textContent=`.matchesPage .matche.matchTab{border:0;background:transparent;padding:11px 15px;border-radius:13px;font-weight:800;color:#666;cursor:pointer}sHero{margin-bottom:18px}.matchTabs{display:flex;gap:8px;flex-wrap:wrap;padding:7px;background:rgba(255,255,255,.82);border:1px solid #eceaf3;border-radius:18px;box-shadow:0 10px 30px rgba(60,45,100,.06);position:sticky;top:10px;z-index:5}.matchTab span{display:inline-flex;min-width:23px;height:23px;align-items:center;justify-content:center;margin-left:7px;border-radius:999px;background:#eeeaf7;font-size:11px}.matchTab.active{background:linear-gradient(135deg,#5b4de6,#d946ef);color:#fff;box-shadow:0 8px 22px rgba(91,77,230,.2)}.matchTab.active span{background:rgba(255,255,255,.2);color:#fff}.matchSectionTitle{margin:24px 0 14px}.matchGridPro{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.matchCardPro{display:grid;grid-template-columns:150px 1fr;min-height:190px;overflow:hidden;border:1px solid #eceaf3;border-radius:22px;background:#fff;box-shadow:0 14px 40px rgba(48,35,80,.07)}.matchPhoto{position:relative;min-height:190px;background:#f1eff8;overflow:hidden}.matchPhotoImg{width:100%;height:100%;min-height:190px;object-fit:cover;display:block}.matchBadge{position:absolute;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.92);font-size:11px;font-weight:900;color:#5b21b6}.matchBadge.newLike{color:#be185d}.matchBadge.sentLike{color:#1d4ed8}.matchCardBody{padding:18px;display:flex;flex-direction:column;justify-content:center}.matchName h3{margin:0 0 4px}.matchName span{font-size:12px;color:#777}.matchSub{font-size:13px;color:#666;margin:10px 0 16px}.matchCardBody .actions{margin-top:auto}.matchEmpty{grid-column:1/-1;text-align:center;padding:44px 20px}.emptyEmoji{font-size:42px;margin-bottom:8px}.proConfirmOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,18,35,.58);backdrop-filter:blur(9px);animation:proConfirmFade .18s ease}.proConfirmCard{width:min(470px,100%);background:rgba(255,255,255,.98);border:1px solid rgba(255,255,255,.8);border-radius:28px;padding:26px;box-shadow:0 30px 90px rgba(20,15,50,.28);position:relative;animation:proConfirmUp .2s ease}.proConfirmClose{position:absolute;right:15px;top:12px;border:0;background:#f3f2f7;width:34px;height:34px;border-radius:50%;font-size:24px;line-height:1;cursor:pointer;color:#555}.proConfirmIcon{width:58px;height:58px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ffe4ee,#eee8ff);font-size:28px;margin-bottom:17px}.proConfirmPerson{display:flex;align-items:center;gap:14px;padding-right:35px}.proConfirmAvatar{width:58px;height:58px;border-radius:18px;object-fit:cover;display:block;background:#f0eef8}.proConfirmFallback{display:flex;align-items:center;justify-content:center;font-size:25px}.proConfirmEyebrow{font-size:10px;font-weight:900;letter-spacing:.14em;color:#7c3aed;margin-bottom:4px}.proConfirmCard h3{margin:0;font-size:23px;letter-spacing:-.02em}.proConfirmName{font-size:13px;color:#666;margin-top:3px;font-weight:700}.proConfirmMessage{font-size:14px;line-height:1.6;color:#555;margin:19px 0 11px}.proConfirmNote{font-size:11px;color:#888;background:#f8f7fb;border-radius:12px;padding:9px 11px}.proConfirmActions{display:flex;gap:10px;margin-top:20px}.proConfirmActions button{flex:1;min-height:46px}.proConfirmActions .danger{background:linear-gradient(135deg,#ef476f,#d7265f);color:#fff;border:0;border-radius:14px;font-weight:900;cursor:pointer}.proConfirmActions .danger:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(215,38,95,.2)}@keyframes proConfirmFade{from{opacity:0}to{opacity:1}}@keyframes proConfirmUp{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:520px){.proConfirmCard{padding:22px;border-radius:23px}.proConfirmActions{flex-direction:column-reverse}.proConfirmActions button{width:100%}}@media(max-width:800px){.matchGridPro{grid-template-columns:1fr}.matchCardPro{grid-template-columns:120px 1fr}.matchPhoto,.matchPhotoImg{min-height:175px}}@media(max-width:520px){.matchCardPro{grid-template-columns:1fr}.matchPhoto{height:230px}.matchPhotoImg{height:230px}.matchTabs{position:static}.matchTab{flex:1;min-width:100px}}`;document.head.appendChild(st)}
+async function renderGroups(){groups=await api('/api/groups');const cats=[...new Set(groups.map(g=>g.category).filter(Boolean))];page.innerHTML=`<div class="pagepad vibePage"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR CIRCLES ✨</div><h1>Find your people.</h1><p>Study buddies, travel crews, hobby friends and people you actually vibe with.</p></div></div><div class="filterRow"><button class="filterPill active">✨ For you</button>${cats.slice(0,5).map(c=>`<button class="filterPill">${esc(c)}</button>`).join('')}</div><div class="title">
+  <div>
+    <h2>Trending communities</h2>
+    <p class="muted">Join a circle first. Then discover people inside it.</p>
+  </div>
+  <button class="primary" onclick="createCommunity()">＋ Create community</button>
+</div><div class="groupGrid">${groups.map((g,i)=>`<article class="groupCardNew"><div class="groupCover"><span class="groupIcon">${g.icon||'✨'}</span><span class="groupLive">● ${g.members} vibes</span></div><div class="groupContent"><span class="miniTag">${esc(g.category||'Community')}</span><h3>${esc(g.name)}</h3><p>${esc(g.description)}</p><div class="groupMeta"><span>👥 ${g.members} members</span><span>${g.joined?'✓ Joined':'Open to join'}</span></div><div class="actions">${g.joined?`<button class="primary" onclick="openGroup(${i})">Open circle →</button><button class="iconBtn" title="Leave" onclick="leaveGroup(${g.id})">↪</button>`:`<button class="primary" onclick="joinGroup(${g.id})">Join circle ✨</button>`}</div></div></article>`).join('')||'<div class="emptyState"><div>🌱</div><h3>Your next circle is waiting.</h3><p class="muted">Complete your profile to unlock better community recommendations.</p></div>'}</div></div>`}
 async function joinGroup(id){try{await api(`/api/groups/${id}/join`,{method:'POST'});render('groups')}catch(e){toast(e.message)}}async function leaveGroup(id){try{await api(`/api/groups/${id}/leave`,{method:'POST'});render('groups')}catch(e){toast(e.message)}}
 async function openGroup(i){activeGroup=groups[i];socket?.emit('group:join',activeGroup.id);const members=await api(`/api/groups/${activeGroup.id}/members`);const msgs=await api(`/api/groups/${activeGroup.id}/messages`);page.innerHTML=`<div class="pagepad vibePage"><button class="backBtn" onclick="render('groups')">← All circles</button><div class="groupDetailHero"><div><div class="eyebrow">${esc(activeGroup.category||'COMMUNITY')}</div><h1>${activeGroup.icon||'✨'} ${esc(activeGroup.name)}</h1><p>${esc(activeGroup.description)}</p><div class="heroTags"><span>👥 ${members.length} active</span><span>💬 Community chat</span><span>💞 Dating inside</span></div></div><button class="glassBtn" onclick="render('events')">📅 Group events</button></div><div class="groupWorkspace"><section class="chatPanel communityChat"><div class="chatHead"><div><b>${esc(activeGroup.name)}</b><small> · ${members.length} members</small></div><span class="onlineDot">● live</span></div><div class="welcomePost"><div class="welcomeEmoji">👋</div><div><b>Welcome to the circle!</b><p>Introduce yourself, share what you’re working on, or start a conversation.</p><div class="starterChips"><button onclick="$('body').value='Hey everyone 👋 What are you all working on?'">👋 Introduce yourself</button><button onclick="$('body').value='Anyone up for a meetup this week?'">📍 Plan a meetup</button><button onclick="$('body').value='Looking for study/project buddies 🚀'">🚀 Find buddies</button></div></div></div><div class="chatBody" id="msgs">${msgs.map(msgHtml).join('')||'<div class="emptyChat"><div>💭</div><b>No messages yet</b><span>Be the first to start the vibe.</span></div>'}</div><form id="composer" class="chatComposer"><input id="body" placeholder="Drop a message…"><button class="sendBtn">➤</button></form></section><aside class="groupSide"><div class="sideCard"><div class="sideTitle"><span>People in this circle</span><b>${members.length}</b></div><div class="memberStack">${members.slice(0,7).map(m=>`<div class="memberRow"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.age||'—'} · ${esc(m.course||m.mode||'Member')}</small></div><span class="memberOnline">●</span></div>`).join('')}</div><button class="secondary full" onclick="discoverFromGroup(${activeGroup.id})">💞 Find group matches</button></div><div class="sideCard vibeTip"><span>💡 Vibe tip</span><h3>Shared interests = easier first messages.</h3><p>Ask about a project, trip, playlist or event instead of just saying “hi”.</p></div></aside></div></div>`;bindComposer(body=>socket.emit('group:message',{groupId:activeGroup.id,body}))}
 async function discoverFromGroup(id){try{const list=await api(`/api/discover?groupId=${encodeURIComponent(id)}`);discover=list;page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="render('groups')">← Back to circles</button><div class="title"><div><div class="eyebrow">GROUP → DATING</div><h2>People you may vibe with</h2><p class="muted">Compatibility inside this community.</p></div></div><div class="grid">${list.map((x,i)=>personCard(x,i)).join('')||'<div class="card"><h3>No group matches yet</h3><p class="muted">Complete your profile and compatibility answers.</p></div>'}</div></div>`}catch(e){toast(e.message)}}
 
-async function renderEvents(){events=await api('/api/events');page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">MEET IRL ✨</div><h1>Events & Hangouts</h1><p>Join something fun, meet your community and turn online vibes into real memories.</p></div><div class="heroBadge">${events.length}<span>events</span></div></div><div class="title"><div><h2>Upcoming events</h2><p class="muted">Community events from your VibeMeet circles.</p></div><button class="primary" onclick="createEvent()">＋ Create event</button></div><div class="grid">${events.map(e=>`<div class="card event"><div class="eventDate">${e.starts_at?new Date(e.starts_at).toLocaleString():''}</div><h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'Community hangout')}</p><p>📍 ${esc(e.location||'Online')} · 👥 ${e.attendees||0} joined</p><span class="chip">${e.joined?'✓ Joined':'Open'}</span>${e.joined?'':'<button class="primary full" onclick="joinEvent('+e.id+')">Join event</button>'}</div>`).join('')||'<div class="card"><h3>No upcoming events</h3><p class="muted">Create the first vibe in your community.</p></div>'}</div></div>`}
+async function renderEvents(){events=await api('/api/events');page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">MEET IRL ✨</div><h1>Events & Hangouts</h1><p>Join something fun, meet your community and turn online vibes into real memories.</p></div><div class="heroBadge">${events.length}<span>events</span></div></div><div class="title"><div><h2>Upcoming events</h2><p class="muted">Community events from your VibeMeet circles.</p></div><button class="primary" onclick="createCommunityEvent()">＋ Create event</button></div><div class="grid">${events.map(e=>`<div class="card event"><div class="eventDate">${e.starts_at?new Date(e.starts_at).toLocaleString():''}</div><h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'Community hangout')}</p><p>📍 ${esc(e.location||'Online')} · 👥 ${e.attendees||0} joined</p><span class="chip">${e.joined?'✓ Joined':'Open'}</span>${e.joined?'':'<button class="primary full" onclick="joinEvent('+e.id+')">Join event</button>'}</div>`).join('')||'<div class="card"><h3>No upcoming events</h3><p class="muted">Create the first vibe in your community.</p></div>'}</div></div>`}
 async function joinEvent(id){try{await api(`/api/events/${id}/join`,{method:'POST'});toast('🎉 You joined the event');render('events')}catch(e){toast(e.message)}}
-async function createEvent(){if(!activeGroup){groups=await api('/api/groups');const joined=groups.find(g=>g.joined);if(joined)activeGroup=joined}if(!activeGroup)return toast('Join a group first, then create its event.');const title=prompt('Event name');if(!title)return;const description=prompt('Short description')||'';const location=prompt('Location or Online')||'Online';const when=prompt('Date/time, e.g. 2026-09-20 18:00');if(!when)return;const dt=new Date(when);if(Number.isNaN(dt.getTime()))return toast('Invalid date/time');try{await api(`/api/groups/${activeGroup.id}/events`,{method:'POST',body:{title,description,location,startsAt:dt.toISOString()}});toast('📅 Event created');render('events')}catch(e){toast(e.message)}}
+async function createCommunity(){
+  try{
+    const name = prompt("Community name");
+    if(!name || !name.trim()) return;
 
-async function renderCompatibility(){const qs=await api('/api/compatibility/questions'),saved=await api('/api/compatibility/answers').catch(()=>[]);const savedMap={};arr(saved).forEach(x=>savedMap[x.question_id]=x.answer);answerDraft={...savedMap};page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR VIBE DNA 🧩</div><h1>Compatibility</h1><p>Quick choices help VibeMeet find people who naturally click with you.</p></div></div><div class="grid" style="margin-top:18px">${qs.map(q=>`<div class="card"><div class="eyebrow">QUESTION</div><h3>${esc(q.question)}</h3><div class="actions"><button class="${answerDraft[q.id]===q.option_a?'primary':'secondary'}" onclick="chooseAnswer(${q.id},'${esc(q.option_a).replace(/'/g,"\\'")}')">${esc(q.option_a)}</button><button class="${answerDraft[q.id]===q.option_b?'primary':'secondary'}" onclick="chooseAnswer(${q.id},'${esc(q.option_b).replace(/'/g,"\\'")}')">${esc(q.option_b)}</button></div></div>`).join('')}</div><button class="primary" style="margin-top:18px" onclick="saveAnswers()">Save my vibe ✨</button></div>`}
-function chooseAnswer(id,answer){answerDraft[id]=answer;renderCompatibility()}
+    const description = prompt("Community description") || "";
+
+    // Try to create using an already-paid ₹29 purchase first
+    try{
+      await api("/api/groups",{
+        method:"POST",
+        body:{
+          name:name.trim(),
+          description:description.trim()
+        }
+      });
+
+      toast("🎉 Community created successfully!");
+      render("groups");
+      return;
+    }catch(e){
+      // No unused payment → continue to payment
+      if(!String(e.message || "").includes("₹29")){
+        throw e;
+      }
+    }
+
+    // No paid purchase available → open ₹29 payment
+    const o = await api("/api/features/order",{
+      method:"POST",
+      body:{product:"community_create"}
+    });
+
+    await loadRazorpay();
+
+    const checkout = new Razorpay({
+      key:o.keyId,
+      amount:o.amount,
+      currency:"INR",
+      name:"VibeMeet",
+      description:"VibeMeet Community Creation · ₹29",
+      order_id:o.orderId,
+      prefill:{
+        name:user?.name || "",
+        email:user?.email || ""
+      },
+      theme:{color:"#6b4ce6"},
+      modal:{
+        ondismiss:()=>toast("Payment cancelled")
+      },
+      handler:async r=>{
+        console.log("RAZORPAY RESPONSE:", r);
+
+        try{
+          await api("/api/features/verify",{
+            method:"POST",
+            body:{
+              orderId:r.razorpay_order_id,
+              paymentId:r.razorpay_payment_id,
+              signature:r.razorpay_signature
+            }
+          });
+
+          await api("/api/groups",{
+            method:"POST",
+            body:{
+              name:name.trim(),
+              description:description.trim()
+            }
+          });
+
+          toast("🎉 Community created successfully!");
+          render("groups");
+        }catch(e){
+          toast(e.message);
+        }
+      }
+    });
+
+    checkout.open();
+
+  }catch(e){
+    toast(e.message);
+  }
+}
+
+async function createCommunityEvent(){
+  const vipActive =
+    user?.vip_until &&
+    new Date(user.vip_until) > new Date();
+
+  groups = await api('/api/groups');
+
+  const joinedGroups = groups.filter(g => g.joined);
+
+  if(!joinedGroups.length){
+    toast('Join a community first.');
+    return render('groups');
+  }
+
+  document.getElementById('createEventModal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'createEventModal';
+
+  modal.innerHTML = `
+    <div class="eventCreateBackdrop">
+      <div class="eventCreateCard">
+
+        <div class="eventCreateHeader">
+          <div class="eventCreateIcon">📅</div>
+
+          <div class="eventCreateHeaderText">
+            <div class="eventCreateEyebrow">
+              ${vipActive ? '💎 VIP EVENT CREATOR' : '✨ COMMUNITY EVENT'}
+            </div>
+
+            <h2>Create an event</h2>
+
+            <p>
+              Bring your community together with something worth showing up for.
+            </p>
+          </div>
+
+          <button
+            class="eventCreateClose"
+            onclick="document.getElementById('createEventModal')?.remove()"
+          >×</button>
+        </div>
+
+        <div class="eventCreateStep">
+          <span>1</span>
+          <div>
+            <b>Choose your community</b>
+            <small>Select where this event will happen</small>
+          </div>
+        </div>
+
+        <select id="eventCommunity" class="eventCreateInput">
+          ${joinedGroups.map(g => `
+            <option value="${g.id}">
+              ${esc(g.name)}
+            </option>
+          `).join('')}
+        </select>
+
+        <div class="eventCreateStep">
+          <span>2</span>
+          <div>
+            <b>Event details</b>
+            <small>Tell people what you're planning</small>
+          </div>
+        </div>
+
+        <label class="eventCreateLabel">Event name</label>
+        <input
+          id="eventTitle"
+          class="eventCreateInput"
+          placeholder="e.g. Weekend Coding Meetup"
+          maxlength="100"
+        >
+
+        <label class="eventCreateLabel">Description</label>
+        <textarea
+          id="eventDescription"
+          class="eventCreateInput eventCreateTextarea"
+          rows="4"
+          placeholder="What's happening? Tell your community..."
+          maxlength="500"
+        ></textarea>
+
+        <div class="eventCreateGrid">
+
+          <div>
+            <label class="eventCreateLabel">📍 Location</label>
+            <input
+              id="eventLocation"
+              class="eventCreateInput"
+              placeholder="Online or venue"
+              value="Online"
+            >
+          </div>
+
+          <div>
+            <label class="eventCreateLabel">🕐 Date & time</label>
+            <input
+              id="eventDate"
+              class="eventCreateInput"
+              type="datetime-local"
+            >
+          </div>
+
+        </div>
+
+        <div class="eventCreatePrice">
+          <div>
+            <span class="eventCreatePriceIcon">
+              ${vipActive ? '💎' : '✨'}
+            </span>
+
+            <div>
+              <b>
+                ${vipActive ? 'VIP benefit' : 'Event creation'}
+              </b>
+
+              <small>
+                ${vipActive
+                  ? 'Included with your VIP membership'
+                  : 'One-time community event creation'}
+              </small>
+            </div>
+          </div>
+
+          <strong>
+            ${vipActive ? 'FREE' : '₹29'}
+          </strong>
+        </div>
+
+        <div class="eventCreateActions">
+
+          <button
+            class="eventCancelBtn"
+            onclick="document.getElementById('createEventModal')?.remove()"
+          >
+            Cancel
+          </button>
+
+          <button
+            class="eventCreateBtn"
+            id="saveEventBtn"
+          >
+            ${vipActive
+              ? '💎 Create Event'
+              : '✨ Pay ₹29 & Create'}
+          </button>
+
+        </div>
+
+        <div class="eventCreateSecure">
+          🔒 Secure payment powered by Razorpay
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  if(!document.getElementById('eventCreateStyles')){
+    const style = document.createElement('style');
+    style.id = 'eventCreateStyles';
+
+    style.textContent = `
+      .eventCreateBackdrop{
+        position:fixed;
+        inset:0;
+        z-index:99999;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:20px;
+        background:rgba(15,23,42,.72);
+        backdrop-filter:blur(18px);
+      }
+
+      .eventCreateCard{
+        width:min(650px,96vw);
+        max-height:92vh;
+        overflow-y:auto;
+        padding:30px;
+        border-radius:30px;
+        background:rgba(255,255,255,.98);
+        box-shadow:0 35px 100px rgba(0,0,0,.30);
+        border:1px solid rgba(255,255,255,.8);
+      }
+
+      .eventCreateHeader{
+        display:flex;
+        align-items:flex-start;
+        gap:15px;
+        margin-bottom:26px;
+      }
+
+      .eventCreateIcon{
+        width:58px;
+        height:58px;
+        flex:none;
+        display:grid;
+        place-items:center;
+        border-radius:19px;
+        background:linear-gradient(135deg,#22b7f0,#7357e8,#ec4899);
+        color:#fff;
+        font-size:27px;
+        box-shadow:0 12px 30px rgba(115,87,232,.25);
+      }
+
+      .eventCreateHeaderText{
+        flex:1;
+      }
+
+      .eventCreateEyebrow{
+        font-size:11px;
+        font-weight:900;
+        letter-spacing:.12em;
+        color:#7657df;
+        margin-bottom:4px;
+      }
+
+      .eventCreateHeader h2{
+        margin:0 0 5px;
+        font-size:27px;
+        color:#171525;
+      }
+
+      .eventCreateHeader p{
+        margin:0;
+        color:#777387;
+        font-size:14px;
+        line-height:1.5;
+      }
+
+      .eventCreateClose{
+        width:38px;
+        height:38px;
+        border:0;
+        border-radius:50%;
+        background:#f2f1f6;
+        color:#555;
+        font-size:25px;
+        cursor:pointer;
+      }
+
+      .eventCreateStep{
+        display:flex;
+        align-items:center;
+        gap:11px;
+        margin:20px 0 10px;
+      }
+
+      .eventCreateStep span{
+        width:30px;
+        height:30px;
+        display:grid;
+        place-items:center;
+        border-radius:50%;
+        background:linear-gradient(135deg,#6b5ce7,#ec4899);
+        color:#fff;
+        font-size:13px;
+        font-weight:900;
+      }
+
+      .eventCreateStep b{
+        display:block;
+        font-size:14px;
+        color:#252332;
+      }
+
+      .eventCreateStep small{
+        display:block;
+        color:#8a8695;
+        margin-top:2px;
+      }
+
+      .eventCreateLabel{
+        display:block;
+        margin:14px 0 7px;
+        font-size:13px;
+        font-weight:800;
+        color:#403c4b;
+      }
+
+      .eventCreateInput{
+        width:100%;
+        box-sizing:border-box;
+        padding:13px 14px;
+        border:1px solid #e3e0eb;
+        border-radius:14px;
+        background:#faf9fc;
+        color:#252332;
+        font:inherit;
+        outline:none;
+        transition:.2s;
+      }
+
+      .eventCreateInput:focus{
+        border-color:#8167e8;
+        background:#fff;
+        box-shadow:0 0 0 4px rgba(129,103,232,.10);
+      }
+
+      .eventCreateTextarea{
+        resize:vertical;
+        min-height:105px;
+      }
+
+      .eventCreateGrid{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:14px;
+        margin-top:2px;
+      }
+
+      .eventCreatePrice{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:15px;
+        margin-top:22px;
+        padding:15px 17px;
+        border-radius:17px;
+        background:linear-gradient(135deg,#f5f3ff,#fff0f7);
+        border:1px solid #ebe5fa;
+      }
+
+      .eventCreatePrice > div{
+        display:flex;
+        align-items:center;
+        gap:11px;
+      }
+
+      .eventCreatePriceIcon{
+        width:38px;
+        height:38px;
+        display:grid;
+        place-items:center;
+        border-radius:12px;
+        background:#fff;
+      }
+
+      .eventCreatePrice b{
+        display:block;
+        font-size:13px;
+      }
+
+      .eventCreatePrice small{
+        display:block;
+        margin-top:3px;
+        color:#888493;
+      }
+
+      .eventCreatePrice strong{
+        font-size:19px;
+        color:#6d4fe4;
+      }
+
+      .eventCreateActions{
+        display:grid;
+        grid-template-columns:1fr 1.7fr;
+        gap:12px;
+        margin-top:20px;
+      }
+
+      .eventCancelBtn,
+      .eventCreateBtn{
+        min-height:50px;
+        border:0;
+        border-radius:15px;
+        font-weight:900;
+        font-size:14px;
+        cursor:pointer;
+      }
+
+      .eventCancelBtn{
+        background:#f2f1f5;
+        color:#55515e;
+      }
+
+      .eventCreateBtn{
+        color:#fff;
+        background:linear-gradient(135deg,#20b5ef,#7255e8,#ec4899);
+        box-shadow:0 10px 25px rgba(108,78,220,.25);
+      }
+
+      .eventCreateBtn:hover{
+        transform:translateY(-1px);
+      }
+
+      .eventCreateSecure{
+        text-align:center;
+        margin-top:13px;
+        color:#9995a3;
+        font-size:11px;
+      }
+
+      @media(max-width:600px){
+        .eventCreateCard{
+          padding:22px;
+          border-radius:24px;
+        }
+
+        .eventCreateGrid{
+          grid-template-columns:1fr;
+          gap:0;
+        }
+
+        .eventCreateActions{
+          grid-template-columns:1fr;
+        }
+
+        .eventCreateHeader h2{
+          font-size:23px;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  document.getElementById('saveEventBtn').onclick = async () => {
+
+    const groupId =
+      Number(document.getElementById('eventCommunity').value);
+
+    const selectedGroup =
+      joinedGroups.find(g => Number(g.id) === groupId);
+
+    const title =
+      document.getElementById('eventTitle').value.trim();
+
+    const description =
+      document.getElementById('eventDescription').value.trim();
+
+    const location =
+      document.getElementById('eventLocation').value.trim() || 'Online';
+
+    const when =
+      document.getElementById('eventDate').value;
+
+    if(!selectedGroup)
+      return toast('Choose a community.');
+
+    if(!title)
+      return toast('Enter an event name.');
+
+    if(!when)
+      return toast('Choose a date and time.');
+
+    const dt = new Date(when);
+
+    if(Number.isNaN(dt.getTime()))
+      return toast('Invalid date/time.');
+
+    const btn = document.getElementById('saveEventBtn');
+
+    try {
+
+      btn.disabled = true;
+      btn.textContent = vipActive
+        ? 'Creating event...'
+        : 'Opening secure payment...';
+
+      /* VIP users create directly */
+      if(!vipActive){
+
+        const order = await api('/api/features/order', {
+          method:'POST',
+          body:{
+            product:'event_create'
+          }
+        });
+
+        await loadRazorpay();
+
+        await new Promise((resolve,reject) => {
+
+          const checkout = new Razorpay({
+
+            key:order.keyId,
+            amount:order.amount,
+            currency:'INR',
+            name:'VibeMeet',
+            description:'Community Event Creation · ₹29',
+            order_id:order.orderId,
+
+            prefill:{
+              name:user?.name || '',
+              email:user?.email || ''
+            },
+
+            theme:{
+              color:'#6b4ce6'
+            },
+
+            modal:{
+              ondismiss:() =>
+                reject(new Error('Payment cancelled'))
+            },
+
+            handler:async payment => {
+
+              try{
+
+                if(
+                  !payment?.razorpay_order_id ||
+                  !payment?.razorpay_payment_id ||
+                  !payment?.razorpay_signature
+                ){
+                  throw new Error('Payment response was incomplete.');
+                }
+
+                await api('/api/features/verify',{
+                  method:'POST',
+                  body:{
+                    orderId:payment.razorpay_order_id,
+                    paymentId:payment.razorpay_payment_id,
+                    signature:payment.razorpay_signature
+                  }
+                });
+
+                resolve();
+
+              }catch(e){
+                reject(e);
+              }
+            }
+
+          });
+
+          checkout.open();
+        });
+      }
+
+      btn.textContent = 'Creating event...';
+
+      await api(`/api/groups/${selectedGroup.id}/events`,{
+        method:'POST',
+        body:{
+          title,
+          description,
+          location,
+          startsAt:dt.toISOString()
+        }
+      });
+
+      modal.remove();
+
+      toast(
+        vipActive
+          ? '💎 Event created successfully!'
+          : '📅 Payment successful — event created!'
+      );
+
+      render('events');
+
+    }catch(e){
+
+      btn.disabled = false;
+
+      btn.textContent = vipActive
+        ? '💎 Create Event'
+        : '✨ Pay ₹29 & Create';
+
+      toast(e.message);
+    }
+  };
+}
+
+async function renderCompatibility(refresh=false){const qs=await api('/api/compatibility/questions');if(refresh||!Object.keys(answerDraft).length){const saved=await api('/api/compatibility/answers').catch(()=>[]);const savedMap={};arr(saved).forEach(x=>savedMap[x.question_id]=x.answer);answerDraft={...savedMap}}const safeOption=v=>encodeURIComponent(String(v??''));page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR VIBE DNA 🧩</div><h1>Compatibility</h1><p>Quick choices help VibeMeet find people who naturally click with you.</p></div></div><div class="grid" style="margin-top:18px">${qs.map(q=>`<div class="card"><div class="eyebrow">QUESTION</div><h3>${esc(q.question)}</h3><div class="actions"><button type="button" class="${answerDraft[q.id]===q.option_a?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_a)}'))">${esc(q.option_a)}</button><button type="button" class="${answerDraft[q.id]===q.option_b?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_b)}'))">${esc(q.option_b)}</button></div></div>`).join('')}</div><button type="button" class="primary" style="margin-top:18px" onclick="saveAnswers()">Save my vibe ✨</button></div>`}
+function chooseAnswer(id,answer){answerDraft[id]=answer;renderCompatibility(false)}
 async function saveAnswers(){const answers=Object.entries(answerDraft).map(([questionId,answer])=>({questionId:Number(questionId),answer}));if(!answers.length)return toast('Choose at least one answer');try{await api('/api/compatibility/answers',{method:'PUT',body:{answers}});toast('✨ Compatibility updated');render('home')}catch(e){toast(e.message)}}
 
 async function fileToAvatarData(file){
@@ -136,22 +1285,46 @@ async function uploadProfilePhoto(inputId='profilePhotoInput'){
 }
 async function removeProfilePhoto(){if(!user?.avatar)return;try{const d=await api('/api/me/avatar',{method:'DELETE'});user={...user,...d};localStorage.setItem('vm_user',JSON.stringify(user));render('profile');toast('Profile photo removed')}catch(e){toast(e.message)}}
 
-async function renderProfile(){const me=await api('/api/me');user={...user,...me};localStorage.setItem('vm_user',JSON.stringify(user));updateHeader();const complete=profileComplete(user);page.innerHTML=`<div class="pagepad profilePage"><div class="profileHero"><div class="profileHeroPhoto">${avatarHtml(user.avatar,'profileHeroAvatar')}<label class="photoEditButton" title="Change profile photo">📷<input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadProfilePhoto()"></label></div><div class="profileHeroInfo"><div class="eyebrow">YOUR VIBEMEET PROFILE</div><h1>${esc(user.name||'Your profile')} ${user.verified?'✓':''}</h1><p>${esc(user.bio||'Tell people what makes you, you.')}</p><div class="chips"><span class="chip">${user.age||'—'} years</span><span class="chip">📍 ${esc(user.city||'Add city')}</span><span class="chip">${user.mode==='dating'?'❤️ Dating':user.mode==='friendship'?'🤝 Friendship':'👥 Community'}</span></div></div><div class="profileHeroAction"><button class="primary" onclick="openOnboarding(false)">Edit profile ✨</button></div></div>${!complete?`<div class="profileCompletion"><div><b>Finish your profile</b><p class="muted">Complete the remaining details to unlock stronger matches.</p></div><button class="primary" onclick="openOnboarding(false)">Complete setup →</button></div>`:''}<div class="profileLayout"><div class="card formcard"><div class="cardHeading"><div><h2>Edit your details</h2><p class="muted">These details appear on your public profile.</p></div><span class="completionBadge">${complete?'100%':'Setup'}</span></div><div class="photoManager"><div>${avatarHtml(user.avatar,'profileManageAvatar')}</div><div><b>Profile photo</b><p class="muted">Use a clear JPG, PNG or WebP photo. Max 2 MB.</p><label class="uploadBtn">📷 Change photo<input id="profilePhotoInput2" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadProfilePhoto('profilePhotoInput2')"></label>${user.avatar?'<button class="secondary" type="button" onclick="removeProfilePhoto()" style="margin-left:8px">Remove</button>':''}</div></div><div class="formgrid"><label>Name<input id="p_name" maxlength="40" value="${esc(user.name||'')}"></label><label>Age<input id="p_age" type="number" min="18" max="100" value="${user.age||''}"></label><label>City<input id="p_city" value="${esc(user.city||'')}"></label><label>College<input id="p_college" value="${esc(user.college||'')}"></label><label>Course<input id="p_course" value="${esc(user.course||'')}"></label><label>Gender<select id="p_gender"><option value="prefer_not_to_say">Prefer not to say</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label><label>Mode<select id="p_mode"><option value="dating">❤️ Dating</option><option value="friendship">🤝 Friendship</option><option value="community">👥 Community</option></select></label><label>Match preference<select id="p_pref"><option value="any">Any gender</option><option value="same">Same gender</option><option value="opposite">Opposite gender</option></select></label><label>Relationship intent<select id="p_intent"><option value="open_to_connections">Open to connections</option><option value="long_term">Long-term</option><option value="short_term">Short-term</option><option value="casual">Casual</option><option value="friends_first">Friends first</option></select></label><label class="wide">Interests<input id="p_interests" value="${esc(arr(user.interests).join(', '))}" placeholder="coding, travel, music"></label><label class="wide">Languages<input id="p_languages" value="${esc(arr(user.languages).join(', '))}" placeholder="English, Hindi"></label><label class="wide">Bio<textarea id="p_bio" maxlength="280" placeholder="Tell people what makes you, you.">${esc(user.bio||'')}</textarea></label></div><button class="primary" onclick="saveProfile()">Save profile ✨</button></div><div><div class="card liveProfileCard"><div class="eyebrow">LIVE PREVIEW</div><h3>This is how people see you</h3><div class="previewPhoto">${avatarHtml(user.avatar,'previewAvatar')}</div><h2>${esc(user.name||'Your name')} ${user.age?`, ${user.age}`:''}</h2><p class="muted">${esc(user.city||'Your city')} · ${esc(user.course||'Your course')}</p><p>${esc(user.bio||'Your bio will appear here.')}</p><div class="chips">${chips(user.interests)}</div></div><div class="card" style="margin-top:16px"><div class="eyebrow">BOOST YOUR MATCH SCORE</div><h3>🧩 Answer compatibility questions</h3><p class="muted">Quick either/or choices help VibeMeet find people who naturally click with you.</p><button class="secondary full" onclick="render('compatibility')">Improve my compatibility →</button></div></div></div></div>`;$('p_gender').value=user.gender||'prefer_not_to_say';$('p_mode').value=user.mode||'dating';$('p_pref').value=user.match_preference||'any';$('p_intent').value=user.relationship_intent||'open_to_connections'}
+async function loadMyPhotos(){profilePhotos=await api('/api/me/photos').catch(()=>[]);return profilePhotos}
+function photoThumb(p,i){return `<div class="photoTile ${i===0?'main':''}" draggable="true" data-photo-id="${p.id}" ondragstart="photoDragStart(event,${p.id})" ondragover="event.preventDefault()" ondrop="photoDrop(event,${p.id})"><img src="${esc(p.data)}" alt="Profile photo ${i+1}"><div class="photoTileBar"><span>${i===0?'⭐ Main':`Photo ${i+1}`}</span><button type="button" onclick="deleteProfilePhoto(${p.id})">×</button></div>${i===0?'<span class="mainBadge">MAIN</span>':''}</div>`}
+async function renderPhotoGallery(){const box=$('multiPhotoGallery');if(!box)return;await loadMyPhotos();box.innerHTML=`<div class="multiPhotoHead"><div><h3>📸 Profile photos</h3><p class="muted">Add up to 6 photos. The first photo is your main photo.</p></div><label class="uploadBtn">＋ Add photo<input id="multiPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" onchange="addProfilePhoto()"></label></div><div class="photoGrid">${profilePhotos.map(photoThumb).join('')||'<div class="photoEmpty">Add a few photos so people can see more of your vibe ✨</div>'}</div>`}
+async function addProfilePhoto(){try{if(profilePhotos.length>=6)return toast('You can add up to 6 photos');const f=$('multiPhotoInput')?.files?.[0];if(!f)return;const data=await fileToAvatarData(f);await api('/api/me/photos',{method:'POST',body:{data}});toast('📸 Photo added');await renderPhotoGallery();renderProfile()}catch(e){toast(e.message)}}
+async function deleteProfilePhoto(id){if(!confirm('Delete this photo?'))return;try{await api(`/api/me/photos/${id}`,{method:'DELETE'});toast('Photo deleted');await renderPhotoGallery();renderProfile()}catch(e){toast(e.message)}}
+let draggedPhotoId=null;function photoDragStart(e,id){draggedPhotoId=id;e.dataTransfer.effectAllowed='move'}async function photoDrop(e,targetId){e.preventDefault();if(!draggedPhotoId||draggedPhotoId===targetId)return;const ids=profilePhotos.map(p=>p.id),from=ids.indexOf(draggedPhotoId),to=ids.indexOf(targetId);ids.splice(from,1);ids.splice(to,0,draggedPhotoId);try{await api('/api/me/photos/reorder',{method:'POST',body:{ids}});toast('↕ Photos reordered');await renderPhotoGallery();renderProfile()}catch(e){toast(e.message)}finally{draggedPhotoId=null}}
+async function renderProfile(){const me=await api('/api/me');user={...user,...me};localStorage.setItem('vm_user',JSON.stringify(user));updateHeader();const complete=profileComplete(user);page.innerHTML=`<div class="pagepad profilePage"><div class="profileHero"><div class="profileHeroPhoto">${avatarHtml(user.avatar,'profileHeroAvatar')}<label class="photoEditButton" title="Change profile photo">📷<input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadProfilePhoto()"></label></div><div class="profileHeroInfo"><div class="eyebrow">YOUR VIBEMEET PROFILE</div><h1>${esc(user.name||'Your profile')} ${user.verified?'✓':''}</h1><p>${esc(user.bio||'Tell people what makes you, you.')}</p><div class="chips"><span class="chip">${user.age||'—'} years</span><span class="chip">📍 ${esc(user.city||'Add city')}</span><span class="chip">${user.mode==='dating'?'❤️ Dating':user.mode==='friendship'?'🤝 Friendship':'👥 Community'}</span></div></div><div class="profileHeroAction"><button class="primary" onclick="openOnboarding(false)">Edit profile ✨</button></div></div><div id="multiPhotoGallery" class="card multiPhotoCard" style="margin-top:18px"></div>${!complete?`<div class="profileCompletion"><div><b>Finish your profile</b><p class="muted">Complete the remaining details to unlock stronger matches.</p></div><button class="primary" onclick="openOnboarding(false)">Complete setup →</button></div>`:''}<div class="profileLayout"><div class="card formcard"><div class="cardHeading"><div><h2>Edit your details</h2><p class="muted">These details appear on your public profile.</p></div><span class="completionBadge">${complete?'100%':'Setup'}</span></div><div class="formgrid"><label>Name<input id="p_name" maxlength="40" value="${esc(user.name||'')}"></label><label>Age<input id="p_age" type="number" min="18" max="100" value="${user.age||''}"></label><label>City<input id="p_city" value="${esc(user.city||'')}"></label><label>College<input id="p_college" value="${esc(user.college||'')}"></label><label>Course<input id="p_course" value="${esc(user.course||'')}"></label><label>Gender<select id="p_gender"><option value="prefer_not_to_say">Prefer not to say</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label><label>Mode<select id="p_mode"><option value="dating">❤️ Dating</option><option value="friendship">🤝 Friendship</option><option value="community">👥 Community</option></select></label><label>Match preference<select id="p_pref"><option value="any">Any gender</option><option value="same">Same gender</option><option value="opposite">Opposite gender</option></select></label><label>Relationship intent<select id="p_intent"><option value="open_to_connections">Open to connections</option><option value="long_term">Long-term</option><option value="short_term">Short-term</option><option value="casual">Casual</option><option value="friends_first">Friends first</option></select></label><label class="wide">Interests<input id="p_interests" value="${esc(arr(user.interests).join(', '))}" placeholder="coding, travel, music"></label><label class="wide">Languages<input id="p_languages" value="${esc(arr(user.languages).join(', '))}" placeholder="English, Hindi"></label><label class="wide">Bio<textarea id="p_bio" maxlength="280" placeholder="Tell people what makes you, you.">${esc(user.bio||'')}</textarea></label></div><button class="primary" onclick="saveProfile()">Save profile ✨</button></div><div><div class="card liveProfileCard"><div class="eyebrow">LIVE PREVIEW</div><h3>This is how people see you</h3><div class="previewPhoto">${avatarHtml(user.avatar,'previewAvatar')}</div><h2>${esc(user.name||'Your name')} ${user.age?`, ${user.age}`:''}</h2><p class="muted">${esc(user.city||'Your city')} · ${esc(user.course||'Your course')}</p><p>${esc(user.bio||'Your bio will appear here.')}</p><div class="chips">${chips(user.interests)}</div></div><div class="card" style="margin-top:16px"><div class="eyebrow">BOOST YOUR MATCH SCORE</div><h3>🧩 Answer compatibility questions</h3><p class="muted">Quick either/or choices help VibeMeet find people who naturally click with you.</p><button class="secondary full" onclick="render('compatibility')">Improve my compatibility →</button></div></div></div></div>`;$('p_gender').value=user.gender||'prefer_not_to_say';$('p_mode').value=user.mode||'dating';$('p_pref').value=user.match_preference||'any';$('p_intent').value=user.relationship_intent||'open_to_connections';await renderPhotoGallery()}
 async function saveProfile(){try{const body={name:$('p_name').value.trim(),age:Number($('p_age').value)||null,city:$('p_city').value.trim(),college:$('p_college').value.trim(),course:$('p_course').value.trim(),gender:$('p_gender').value,mode:$('p_mode').value,matchPreference:$('p_pref').value,relationshipIntent:$('p_intent').value,bio:$('p_bio').value.trim(),interests:$('p_interests').value.split(',').map(x=>x.trim()).filter(Boolean),languages:$('p_languages').value.split(',').map(x=>x.trim()).filter(Boolean),avatar:user.avatar||''};const d=await api('/api/me',{method:'PATCH',body});user={...user,...d};localStorage.setItem('vm_user',JSON.stringify(user));updateHeader();toast('✨ Profile saved');render('profile')}catch(e){toast(e.message)}}
-async function renderMessages(){if(!activePerson){page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR CONNECTIONS 💬</div><h1>Messages</h1><p>Match first, then move the conversation here.</p></div></div><div class="title"><div><h2>People</h2><p class="muted">Choose someone to open a private chat.</p></div></div><div class="grid">${(await api('/api/matches')).map(x=>`<div class="card"><div class="personTop">${avatarHtml(x.avatar,'profilePic')}<div><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span class="chip">💞 Match</span></div></div><button class="primary full" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">Open chat →</button></div>`).join('')||'<div class="card"><h3>No matches yet</h3><p class="muted">Go discover people and make a mutual match first.</p><button class="primary" onclick="render(\'home\')">Discover people</button></div>'}</div></div>`;return}socket?.emit('dm:join',activePerson.id);let msgs=await api(`/api/dm/${activePerson.id}/messages`);page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="activePerson=null;render('messages')">← Messages</button><div class="chatPanel" style="min-height:650px"><div class="chatHead"><div><b>💬 ${esc(activePerson.name)}</b><small> · private chat</small></div><div><button class="secondary" onclick="viewProfile(${activePerson.id})">Profile</button> <button class="secondary" onclick="startCall(${activePerson.id},'video')">📹</button> <button class="secondary" onclick="startCall(${activePerson.id},'voice')">📞</button></div></div><div class="chatBody" id="msgs">${msgs.map(msgHtml).join('')||'<div class="emptyChat"><div>💜</div><b>Start the conversation</b><span>Ask something specific and easy to answer.</span></div>'}</div><form id="composer" class="chatComposer"><input id="body" maxlength="2000" placeholder="Write something…"><button class="sendBtn">➤</button></form></div></div>`;bindComposer(body=>socket.emit('dm:message',{to:activePerson.id,body}))}
+async function markDmRead(){if(!activePerson||!socket)return;try{const d=await api(`/api/dm/${activePerson.id}/read`,{method:'POST'});(d.messageIds||[]).forEach(markMessageSeen);socket.emit('dm:read',{to:activePerson.id})}catch{}}
+function markMessageSeen(id){document.querySelectorAll(`.msgReceipt[data-msg-id="${id}"]`).forEach(el=>{el.textContent='Seen ✓✓';el.classList.add('seen')})}
+async function renderMessages(){clearTimeout(typingTimer);typingTimer=null;if(!activePerson){page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR CONNECTIONS 💬</div><h1>Messages</h1><p>Match first, then move the conversation here.</p></div></div><div class="title"><div><h2>People</h2><p class="muted">Choose someone to open a private chat.</p></div></div><div class="grid">${(await api('/api/matches')).map(x=>`<div class="card"><div class="personTop">${avatarHtml(x.avatar,'profilePic')}<div><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><div class="matchMeta"><span class="chip">💞 Match</span>${presenceHtml(x.status)}</div></div></div><button class="primary full" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">Open chat →</button></div>`).join('')||'<div class="card"><h3>No matches yet</h3><p class="muted">Go discover people and make a mutual match first.</p><button class="primary" onclick="render(\'home\')">Discover people</button></div>'}</div></div>`;return}socket?.emit('dm:join',activePerson.id);messageCache.clear();let msgs=await api(`/api/dm/${activePerson.id}/messages`);page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="activePerson=null;render('messages')">← Messages</button><div class="chatPanel" style="min-height:650px"><div class="chatHead"><div><b>💬 ${esc(activePerson.name)}</b><div class="chatPresence">${presenceHtml(activePerson.status)}<small> · private chat</small></div><div id="typingIndicator" style="font-size:12px;min-height:22px;opacity:.9;margin-top:4px;font-weight:700;color:#5b4de6"></div></div><div><button class="secondary" onclick="viewProfile(${activePerson.id})">Profile</button> <button class="secondary" onclick="startCall(${activePerson.id},'video')">📹</button> <button class="secondary" onclick="startCall(${activePerson.id},'voice')">📞</button> <button class="secondary" onclick="openChatSafety()" title="Safety & actions">•••</button></div></div><div class="chatBody" id="msgs">${msgs.map(msgHtml).join('')||'<div class="emptyChat"><div>💜</div><b>Start the conversation</b><span>Ask something specific and easy to answer.</span></div>'}</div><form id="composer" class="chatComposer"><label class="chatImageBtn" title="Send image">📷<input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/webp" onchange="sendChatImage()" hidden></label><input id="body" maxlength="2000" placeholder="Write something…"><button class="sendBtn">➤</button></form></div></div>`;replyDraft=null;bindComposer(body=>{socket.emit('dm:message',{to:activePerson.id,body,replyToId:replyDraft?.id||null});replyDraft=null;setReplyBar()},typing=>socket.emit('dm:typing',{to:activePerson.id,typing}));markDmRead()}
 
 async function renderPeople(){people=await api('/api/people');page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">MEET THE COMMUNITY 🌐</div><h1>People</h1><p>Browse the community, open profiles and start conversations.</p></div></div><div class="grid" style="margin-top:18px">${people.map((x,i)=>`<div class="card personCard"><div class="personTop">${avatarHtml(x.avatar,'profilePic')}<div><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><div class="muted">${x.age||'—'} · ${esc(x.city||'')} · ${esc(x.course||'')}</div><div class="chips" style="margin-top:7px">${chips(x.interests)}</div></div></div><div class="muted">${esc(x.bio||'No bio yet')}</div><div class="actions"><button class="primary" onclick="viewProfile(${x.id})">View</button><button class="secondary" onclick="messageUser(${x.id},'${esc(x.name).replace(/'/g,"\\'")}')">Message</button></div></div>`).join('')||'<div class="card"><h3>No people found</h3><p class="muted">Try again later.</p></div>'}</div></div>`}
 
 async function renderCalls(){page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">REAL-TIME CONNECTION</div><h1>Voice & Video</h1><p>Call a person from their profile or chat. Opposite-gender calls require an active Call Pass.</p></div></div><div class="card" style="margin-top:18px"><h3>${hasPass(user)?'🎫 Call Pass active':'🔒 No Call Pass'}</h3><p class="muted">Choose someone from People or Messages to start a call.</p><button class="primary" onclick="render('people')">Choose someone</button> <button class="secondary" onclick="buyCallPass()">Get Call Pass</button></div></div>`}
-async function renderVip(){page.innerHTML=`<div class="pagepad"><div class="hero"><div><div class="eyebrow">PREMIUM</div><h1>VibeMeet VIP</h1><p>Stand out with a VIP badge, priority discovery and a featured profile.</p><button class="btn" onclick="buyVip()">Get VIP ₹499 / month</button></div><div class="heroArt"><div class="orbit">♛</div></div></div></div>`}
+async function renderVip(){
+  const active=!!(user?.vip_until&&new Date(user.vip_until)>new Date());
+  const until=active?new Date(user.vip_until).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'';
+  page.innerHTML=`<style>
+  .vipWrap{max-width:980px;margin:0 auto}.vipHeroPro{position:relative;overflow:hidden;border-radius:30px;padding:34px;background:linear-gradient(135deg,#0d2f68,#5b35a8 58%,#c33e86);color:#fff;box-shadow:0 24px 70px rgba(48,36,110,.18)}
+  .vipHeroPro:before,.vipHeroPro:after{content:'';position:absolute;border-radius:999px;background:rgba(255,255,255,.10);pointer-events:none}.vipHeroPro:before{width:240px;height:240px;right:-70px;top:-100px}.vipHeroPro:after{width:170px;height:170px;right:120px;bottom:-110px}
+  .vipHeroGrid{position:relative;z-index:1;display:grid;grid-template-columns:1.25fr .75fr;gap:28px;align-items:center}.vipKicker{font-size:12px;letter-spacing:.18em;font-weight:800;opacity:.85}.vipHeroPro h1{font-size:clamp(36px,6vw,58px);line-height:.98;margin:10px 0 14px}.vipHeroPro p{max-width:600px;color:rgba(255,255,255,.86);font-size:16px}.vipPriceCard{background:rgba(255,255,255,.13);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:24px}.vipPriceCard .price{font-size:38px;font-weight:900}.vipPriceCard .price small{font-size:14px;font-weight:700;opacity:.8}.vipCta{width:100%;margin-top:16px;border:0;border-radius:14px;padding:14px 18px;font-weight:900;cursor:pointer;background:#fff;color:#24356f}.vipActivePill{display:inline-flex;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.15);font-weight:800;font-size:13px;margin-top:8px}.vipBenefits{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.vipBenefit{padding:20px;border:1px solid rgba(40,45,80,.08);border-radius:20px;background:rgba(255,255,255,.72);box-shadow:0 10px 30px rgba(20,30,60,.05)}.vipBenefit b{display:block;margin:8px 0 5px}.vipBenefit span{font-size:28px}.vipTrust{text-align:center;margin:18px 0;color:#667085;font-size:13px}.vipUnlockCard{margin-top:18px;padding:22px;border-radius:22px;background:linear-gradient(135deg,#f8fbff,#fff4fb);border:1px solid rgba(90,70,160,.10)}
+  @media(max-width:760px){.vipHeroGrid{grid-template-columns:1fr}.vipBenefits{grid-template-columns:1fr}.vipHeroPro{padding:24px}.vipPriceCard{padding:20px}}
+  </style><div class="pagepad"><div class="vipWrap"><section class="vipHeroPro"><div class="vipHeroGrid"><div><div class="vipKicker">VIBEMEET VIP · PREMIUM</div><h1>See who already likes you. 💎</h1><p>Unlock the full Likes You list, stand out in discovery and get the premium VibeMeet experience.</p>${active?`<div class="vipActivePill">✓ VIP active until ${until}</div>`:''}</div><div class="vipPriceCard"><div class="eyebrow">ONE SIMPLE PLAN</div><div class="price">₹499 <small>/ month</small></div><p>Cancel anytime. Secure checkout powered by Razorpay.</p><button class="vipCta" onclick="buyVip()">${active?'Extend VIP for 30 days':'✨ Unlock VibeMeet VIP'}</button></div></div></section><div class="vipBenefits"><div class="vipBenefit"><span>❤️</span><b>See all Likes You</b><small class="muted">Reveal every person who has already liked you.</small></div><div class="vipBenefit"><span>⭐</span><b>Priority discovery</b><small class="muted">Get a premium edge when people discover profiles.</small></div><div class="vipBenefit"><span>💎</span><b>VIP profile badge</b><small class="muted">Show a premium identity across VibeMeet.</small></div></div><div class="vipUnlockCard"><b>💞 Your connection, without the guessing.</b><p class="muted">With VIP, the Likes You tab becomes fully unlocked so you can choose who to connect with.</p></div><div class="vipTrust">🔒 Secure Razorpay checkout · ₹499 billed for 30 days · Your VibeMeet account stays yours</div></div></div>`
+}
 async function renderAdmin(){const [s,r,u]=await Promise.all([api('/api/admin/stats'),api('/api/admin/reports'),api('/api/admin/users')]);page.innerHTML=`<div class="pagepad"><div class="grid"><div class="card"><h3>Users</h3><div class="score">${s.users}</div></div><div class="card"><h3>Online</h3><div class="score">${s.online}</div></div><div class="card"><h3>Open reports</h3><div class="score">${s.openReports}</div></div></div><div class="card" style="margin-top:18px"><h3>Reports</h3>${r.map(x=>`<div style="padding:12px;border-bottom:1px solid #eee"><b>${esc(x.reported_name)}</b> — ${esc(x.reason)} <button class="secondary" onclick="resolveReport(${x.id})">Resolve</button></div>`).join('')||'<p class="muted">No reports.</p>'}</div><div class="card" style="margin-top:18px"><h3>Users</h3>${u.slice(0,30).map(x=>`<div style="padding:10px;border-bottom:1px solid #eee"><b>${esc(x.name)}</b> · ${esc(x.status)} <button class="danger" onclick="banUser(${x.id})">Ban</button></div>`).join('')}</div></div>`}
 async function resolveReport(id){await api(`/api/admin/reports/${id}/resolve`,{method:'POST'});render('admin')}async function banUser(id){if(confirm('Ban this user?')){await api(`/api/admin/users/${id}/ban`,{method:'POST'});render('admin')}}
 
 async function buyCallPass(){try{const o=await api('/api/call-pass/order',{method:'POST'});await loadRazorpay();new Razorpay({key:o.keyId,amount:o.amount,currency:'INR',name:'VibeMeet',description:`VibeMeet Call Pass (${o.days} days)`,order_id:o.orderId,handler:async r=>{await api('/api/payments/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});toast('Call Pass activated');renderProfile()}}).open()}catch(e){toast(e.message)}}
-async function buyVip(){try{const o=await api('/api/vip/order',{method:'POST'});await loadRazorpay();new Razorpay({key:o.keyId,amount:o.amount,currency:'INR',name:'VibeMeet',description:'VibeMeet VIP',order_id:o.orderId,handler:async r=>{await api('/api/payments/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});toast('VIP activated');render('profile')}}).open()}catch(e){toast(e.message)}}
+async function buyVip(){try{const o=await api('/api/vip/order',{method:'POST'});await loadRazorpay();const checkout=new Razorpay({key:o.keyId,amount:o.amount,currency:'INR',name:'VibeMeet',description:'VibeMeet VIP · 30 days',order_id:o.orderId,prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},modal:{ondismiss:()=>toast('Payment cancelled')},handler:async r=>{try{await api('/api/payments/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});user=await api('/api/me');toast('💎 VIP activated — Likes You is now unlocked');renderMatches('likes')}catch(e){toast(e.message)}}});checkout.open()}catch(e){toast(e.message)}}
 function loadRazorpay(){return new Promise((resolve,reject)=>{if(window.Razorpay)return resolve();const s=document.createElement('script');s.src='https://checkout.razorpay.com/v1/checkout.js';s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 
-function connect(){if(socket)socket.disconnect();socket=io({auth:{token}});socket.on('connect_error',e=>{if(e.message==='auth failed'){localStorage.clear();location.reload()}});socket.on('account:banned',()=>{toast('Your account has been banned.');localStorage.clear();location.reload()});socket.on('new:match',()=>toast('💞 You have a new match!'));socket.on('room:message',appendLive);socket.on('group:message',appendLive);socket.on('dm:message',appendLive);socket.on('call:offer',onCallOffer);socket.on('call:answer',async({answer})=>{if(pc)await pc.setRemoteDescription(answer)});socket.on('call:ice',async({candidate})=>{if(candidate&&pc)await pc.addIceCandidate(candidate).catch(()=>pendingIce.push(candidate))});socket.on('call:end',()=>{toast('Call ended');endCall(false)});socket.on('call:blocked',({reason})=>{toast(reason);endCall(false)})}
+function connect(){if(socket)socket.disconnect();socket=io({auth:{token}});socket.on('connect_error',e=>{if(e.message==='auth failed'){localStorage.clear();location.reload()}});socket.on('account:banned',()=>{toast('Your account has been banned.');localStorage.clear();location.reload()});socket.on('new:match',()=>{
+  toast('💞 You have a new match!');
+  loadNotifications();
+});
+
+socket.on('notification:new',n=>{
+  addLiveNotification(n);
+});socket.on('room:message',appendLive);socket.on('group:message',appendLive);socket.on('dm:message',m=>{appendLive(m);if(activePerson&&Number(m.sender_id)!==Number(user.id)&&Number(m.sender_id)===Number(activePerson.id)){markDmRead()}});socket.on('dm:read',({messageIds=[]}={})=>messageIds.forEach(markMessageSeen));socket.on('dm:reaction',({messageId,reactions=[]}={})=>updateMessageReactions(messageId,reactions));socket.on('dm:typing',({userId,typing})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){const el=document.querySelector('#typingIndicator');if(el)el.textContent=typing?`${activePerson.name} is typing…`:'';}});socket.on('presence:update',({userId,status})=>{if(activePerson&&Number(userId)===Number(activePerson.id)){activePerson.status=status;const el=document.querySelector('.chatPresence');if(el)el.innerHTML=presenceHtml(status)+'<small> · private chat</small>';}});socket.on('call:offer',onCallOffer);socket.on('call:answer',async({answer})=>{if(pc)await pc.setRemoteDescription(answer)});socket.on('call:ice',async({candidate})=>{if(candidate&&pc)await pc.addIceCandidate(candidate).catch(()=>pendingIce.push(candidate))});socket.on('call:end',()=>{toast('Call ended');endCall(false)});socket.on('call:blocked',({reason})=>{toast(reason);endCall(false)})}
 async function rtcConfig(){try{const c=await api('/api/config');const urls=String(c.turnUrls||'').split(',').map(x=>x.trim()).filter(Boolean);return {iceServers:[{urls:'stun:stun.l.google.com:19302'},...(urls.length?[{urls,username:c.turnUsername,credential:c.turnCredential}]:[])]}}catch{return {iceServers:[{urls:'stun:stun.l.google.com:19302'}]}}}
 async function createPeer(peerId){pc=new RTCPeerConnection(await rtcConfig());pc.onicecandidate=e=>{if(e.candidate)socket.emit('call:ice',{to:peerId,candidate:e.candidate})};pc.ontrack=e=>{const v=$('remoteVideo');if(v)v.srcObject=e.streams[0]};pc.onconnectionstatechange=()=>{if(pc?.connectionState==='connected')setCallStatus('Connected');if(['failed','closed'].includes(pc?.connectionState))endCall(false)};return pc}
 async function startCall(id,mode='video'){try{currentCallPeer=id;callMode=mode;await showCallUI(false);setCallStatus('Requesting camera/microphone…');localStream=await navigator.mediaDevices.getUserMedia(mode==='video'?{video:true,audio:true}:{video:false,audio:true});$('localVideo').srcObject=localStream;await createPeer(id);localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));const offer=await pc.createOffer();await pc.setLocalDescription(offer);setCallStatus('Calling…');socket.emit('call:offer',{to:id,offer,type:mode})}catch(e){toast('Could not start call: '+e.message);endCall(false)}}
@@ -164,4 +1337,17 @@ function endCall(notify=true){if(notify&&currentCallPeer)socket?.emit('call:end'
 
 $('search').oninput=async e=>{const qv=e.target.value.trim().toLowerCase();if(!qv)return document.querySelector('.searchResults')?.remove();try{const [ps,gs,es]=await Promise.all([api('/api/people'),api('/api/groups'),api('/api/events')]);let box=document.querySelector('.searchResults');if(!box){box=document.createElement('div');box.className='searchResults';document.querySelector('header').appendChild(box)}const out=[...ps.filter(x=>x.name.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="viewProfile(${x.id})">👤 ${esc(x.name)}</div>`),...gs.filter(x=>x.name.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="render('groups')">${x.icon} ${esc(x.name)}</div>`),...es.filter(x=>x.title.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="render('events')">📅 ${esc(x.title)}</div>`)];box.innerHTML=out.join('')||'<div class="searchItem muted">No results</div>'}catch{}}
 
-if(token&&user){show('app');updateHeader();connect();render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}else show('auth');
+document.head.insertAdjacentHTML('beforeend',`<style>.chatImagePreview{display:block;padding:0;border:0;background:transparent;text-align:left;max-width:100%;cursor:zoom-in}.chatImageLightbox{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:28px;cursor:zoom-out}.chatImageLightbox img{max-width:94vw;max-height:90vh;object-fit:contain;border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.45)}.chatImageClose{position:absolute;top:18px;right:22px;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:30px;line-height:1;cursor:pointer}
+.vipLikesUpsell{display:flex;align-items:center;gap:18px;padding:22px;grid-column:1/-1;background:linear-gradient(135deg,rgba(43,169,255,.08),rgba(211,91,255,.10));border:1px solid rgba(91,77,230,.14)}
+.vipLikesIcon{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,#eaf7ff,#f8eaff);flex:0 0 auto}
+.vipLikesUpsell h3{margin:4px 0 6px}
+.vipLikesUpsell p{margin:0 0 12px}
+</style><style>.chatImageBtn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:14px;cursor:pointer;background:rgba(91,77,230,.09);font-size:19px;flex:0 0 44px}.chatImageBtn:hover{transform:translateY(-1px);background:rgba(91,77,230,.15)}</style><style>.presenceBadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;margin-top:5px}.presenceBadge i{width:8px;height:8px;border-radius:50%;display:inline-block;background:#a1a1aa}.presenceBadge.isOnline i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.12)}.presenceBadge.isOnline{color:#15803d}.presenceBadge.isOffline{color:#71717a}.matchMeta{display:flex;align-items:center;gap:7px;margin-top:5px}.matchMeta .presenceBadge{margin-top:0}.chatPresence{display:flex;align-items:center;gap:5px}.chatPresence .presenceBadge{margin-top:3px}</style>`);if(token&&user){
+  show('app');
+  updateHeader();
+  connect();
+  loadNotifications();
+
+  render('home').then(()=>{if(!profileComplete(user))openOnboarding(true)})}else show('auth');
+
+if(!document.getElementById('vibeMessageEnhancements')){const st=document.createElement('style');st.id='vibeMessageEnhancements';st.textContent=`.msgTools{display:flex;gap:5px;margin-top:7px;opacity:.72}.msgTools button{border:0;background:rgba(120,120,150,.09);border-radius:999px;padding:4px 8px;font-size:11px;cursor:pointer}.msgTools button:hover{transform:translateY(-1px);opacity:1}.msgReactions{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.reactionPill{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:3px 8px;font-size:12px;cursor:pointer}.reactionPill.mine{box-shadow:0 0 0 2px rgba(91,77,230,.16)}.msgReplyQuote{display:flex;flex-direction:column;text-align:left;width:100%;border:0;border-left:3px solid #6b5cff;background:rgba(91,77,230,.07);padding:7px 9px;border-radius:8px;margin:0 0 7px;cursor:pointer}.msgReplyQuote span{font-size:11px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.replyBar{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px;margin-bottom:8px;background:rgba(91,77,230,.06)}.replyBar div{display:flex;flex-direction:column;min-width:0}.replyBar span{font-size:11px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70vw}.replyBar button{border:0;background:transparent;font-size:20px;cursor:pointer}.msgFlash{animation:vibeMsgFlash 1.2s ease}@keyframes vibeMsgFlash{50%{box-shadow:0 0 0 4px rgba(91,77,230,.25)}}`;document.head.appendChild(st)}

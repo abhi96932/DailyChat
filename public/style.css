@@ -36,3 +36,14 @@
 .photoCropWrap{position:relative;width:min(440px,82vw);aspect-ratio:1;border-radius:24px;overflow:hidden;background:#11182f;touch-action:none;box-shadow:0 18px 50px #0002}.photoCropWrap canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}.photoCropWrap canvas:active{cursor:grabbing}.cropRing{position:absolute;inset:10px;border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.10);pointer-events:none}
 .photoEditorControls{display:flex;flex-direction:column;gap:14px}.zoomLabel{font-size:14px;color:#4d5367}.zoomLabel input{width:100%;margin-top:9px;accent-color:#7657f5}.rotateRow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.photoEditorControls small{line-height:1.45}.photoEditorControls .full{width:100%}
 @media(max-width:720px){.photoEditorCard{padding:18px;border-radius:24px}.photoEditorHead h2{font-size:24px}.photoEditorBody{grid-template-columns:1fr;gap:18px}.photoCropWrap{margin:auto}.rotateRow{grid-template-columns:1fr 1fr 1fr}}
+
+/* VibeMeet Gen-Z community refresh */
+:root{--vm-bg:#f7f5fb;--vm-card:#ffffff;--vm-ink:#171321;--vm-muted:#756d84;--vm-purple:#6d32b8;--vm-pink:#e94eae;--vm-blue:#5266ff;--vm-border:#ebe6f3;--vm-shadow:0 12px 35px rgba(31,17,54,.07)}
+body{background:radial-gradient(circle at 10% -5%,rgba(118,72,220,.08),transparent 28%),radial-gradient(circle at 100% 0,rgba(235,76,174,.07),transparent 25%),var(--vm-bg);color:var(--vm-ink)}
+button,input,select,textarea{font:inherit}button{transition:transform .18s ease,box-shadow .18s ease,background .18s ease}button:hover{transform:translateY(-1px)}.card,.hero,.sectionHero{border-color:var(--vm-border);box-shadow:var(--vm-shadow)}
+header{background:rgba(255,255,255,.78)!important;backdrop-filter:blur(18px);border-bottom:1px solid rgba(235,230,243,.8)!important}
+aside{background:rgba(255,255,255,.82)!important;backdrop-filter:blur(22px);border-right:1px solid rgba(235,230,243,.8)!important}
+aside button.active{background:linear-gradient(135deg,#f0e8ff,#ffeaf7)!important;color:#5b2399!important;box-shadow:0 7px 20px rgba(108,50,184,.1)}
+.primary,.btn{background:linear-gradient(135deg,var(--vm-purple),var(--vm-pink))!important;border:0!important;box-shadow:0 10px 24px rgba(109,50,184,.22)}
+.secondary{background:#fff!important;border:1px solid var(--vm-border)!important;box-shadow:0 5px 15px rgba(31,17,54,.04)}
+@media(max-width:800px){aside{box-shadow:20px 0 60px rgba(30,16,50,.18)}}

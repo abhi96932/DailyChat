@@ -38,34 +38,5 @@ The latest build includes a refreshed responsive UI with a softer glass/gradient
 ### Profile photos
 JPG, PNG and WebP profile photos up to 2 MB are resized in the browser to a practical 1200px maximum and stored in PostgreSQL for this prototype. For production scale, move avatars to object storage/CDN.
 
-
-## VibeMeet Community + Uttarakhand Trips
-
-The app now includes a community-first travel layer while preserving the existing dating, friendship, matching, messaging, communities and events flows.
-
-### Travel features
-- Solo → Squad trip creation
-- Uttarakhand destination directory
-- Approximate shared group budget calculator
-- Route and stop planning
-- Season / best-time guidance
-- Vibe AI trip planner
-- Travel compatibility
-- Travel personality and pace
-- Host approval / join requests
-- Trip squad chat
-- Shared checklist
-- Shared expenses
-- Trip safety check-ins
-- Travel reputation
-- "Anyone going?" quick plans
-- Weekend Radar
-- Travel profile and emergency contact
-- Saved trips
-- Uttarakhand travel communities
-
-### Database
-The server performs an idempotent database/schema bootstrap from `db/schema.sql` and `db/travel_seed.sql` before listening. `npm run db:init` remains available for the full initial seed (rooms, communities, compatibility questions and admin).
-
-### Important
-Budget figures are planning estimates, not live quotes. Seasonal guidance is informational; users should verify current weather, road status, local restrictions and accommodation before travelling.
+## VibeMeet Community + Travel
+This build keeps the premium dating/messaging stack and adds a community-first layer with an Uttarakhand travel system. The database initializer also seeds the Uttarakhand destinations and travel communities from `db/travel_seed.sql`.
