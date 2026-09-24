@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
  interests TEXT[] NOT NULL DEFAULT '{}',
  languages TEXT[] NOT NULL DEFAULT '{}',
  mode VARCHAR(20) NOT NULL DEFAULT 'dating',
+ moderation_state VARCHAR(20) NOT NULL DEFAULT 'normal',
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS call_pass_until TIMESTAMPTZ;
@@ -285,3 +286,9 @@ CREATE TABLE IF NOT EXISTS user_follows (
  CHECK(follower_id<>following_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows(following_id);
+
+CREATE TABLE IF NOT EXISTS content_reports (id BIGSERIAL PRIMARY KEY,reporter_id BIGINT REFERENCES users(id) ON DELETE CASCADE,content_type VARCHAR(30) NOT NULL,content_id BIGINT NOT NULL,reported_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,reason VARCHAR(120) NOT NULL,details VARCHAR(1000) DEFAULT '',status VARCHAR(20) NOT NULL DEFAULT 'open',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS security_events (id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,event VARCHAR(80) NOT NULL,ip_hash VARCHAR(128),user_agent_hash VARCHAR(128),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX IF NOT EXISTS idx_security_events_time ON security_events(created_at DESC);

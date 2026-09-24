@@ -1,0 +1,6 @@
+import test from "node:test";import assert from "node:assert/strict";import fs from "node:fs";
+const server=fs.readFileSync(new URL("../src/server.js",import.meta.url),"utf8");const app=fs.readFileSync(new URL("../public/app.js",import.meta.url),"utf8");const index=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8");const schema=fs.readFileSync(new URL("../db/schema.sql",import.meta.url),"utf8");
+test("core safety/discovery endpoints are present",()=>{for(const x of ["/api/discover","/api/swipes","/api/reports","/api/users/:id/block","/api/auth/logout","/api/auth/convert-guest","/api/auth/change-password","/api/trips/:id/safety","/api/feed/:id/report","/api/admin/reports/:id/action"] )assert.ok(server.includes(x),x);});
+test("production protections are configured",()=>{assert.match(server,/helmet\(/);assert.match(server,/HttpOnly/);assert.match(server,/SameSite=Lax/);assert.match(server,/Permissions-Policy/);});
+test("schema contains moderation and safety tables",()=>{assert.match(schema,/content_reports/);assert.match(schema,/trip_checkins/);assert.match(schema,/travel_profiles/);});
+test("mobile and media flows remain wired",()=>{assert.match(index,/data-mobile-page="community"/);assert.match(app,/chatImageInput/);assert.match(app,/getUserMedia/);});

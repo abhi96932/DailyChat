@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "db:init": "node src/init-db.js"
+    "db:init": "node src/init-db.js",
+    "test": "node --test test/*.mjs",
+    "db:backup": "node scripts/backup-db.mjs"
   },
   "engines": {
     "node": ">=22"
