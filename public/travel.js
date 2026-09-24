@@ -212,9 +212,98 @@ async function openGoingCreator(){
  $("goingForm").onsubmit=async e=>{e.preventDefault();try{await tvApi("/api/going",{method:"POST",body:{destinationId:Number($("gDest").value),text:$("gText").value,tripDate:$("gDate").value,startPoint:$("gStart").value,budgetMin:Number($("gMin").value),budgetMax:Number($("gMax").value)}});closeTravelModal();render("going")}catch(e){toast(e.message)}};
 }
 async function renderTravelProfile(){
- injectTravelStyles();const p=await tvApi("/api/travel/profile");
- page.innerHTML=`<div class="pagepad"><section class="sectionHero compactHero"><div><div class="eyebrow">🏕️ TRAVEL IDENTITY</div><h1>Your Travel Profile</h1><p>This powers travel compatibility and helps new squads understand your style.</p></div></section><div class="travelGrid two" style="margin-top:18px"><div class="travelCard"><h3>Travel style</h3><div class="interestPicker" id="travelStyles">${styleTags.map(x=>`<button class="interestChoice ${(p.styles||[]).includes(x.replace(/^.. /,""))?"selected":""}" data-style="${travelEsc(x.replace(/^.. /,""))}">${x}</button>`).join("")}</div><label style="display:block;margin-top:15px">Travel pace<select id="tpPace"><option value="relaxed">🐢 Relaxed</option><option value="balanced">🚶 Balanced</option><option value="fast">🏃 Fast</option></select></label><label style="display:block;margin-top:12px">Budget style<select id="tpBudget"><option value="budget">💰 Budget</option><option value="balanced">🚶 Balanced</option><option value="comfort">🏨 Comfort</option></select></label><label style="display:block;margin-top:12px">Home base<input id="tpHome" value="${travelEsc(p.home_base||user?.city||"")}"></label></div><div class="travelCard"><h3>🛡️ Safety contact</h3><p class="muted">Keep an emergency contact ready for your trips.</p><label>Name<input id="tpEName" value="${travelEsc(p.emergency_name||"")}"></label><label>Phone<input id="tpEPhone" value="${travelEsc(p.emergency_phone||"")}" style="margin-top:8px"></label><label>Relation<input id="tpERel" value="${travelEsc(p.emergency_relation||"")}" style="margin-top:8px"></label><label>Travel bio<textarea id="tpBio" style="margin-top:8px" maxlength="500" placeholder="I like mountain trips, photography and budget travel…">${travelEsc(p.bio||"")}</textarea></label></div></div><div class="travelActions"><button class="primary" onclick="saveTravelProfile()">Save travel profile</button></div></div>`;
- $("tpPace").value=p.pace||"balanced";$("tpBudget").value=p.budget_style||"balanced";
+  injectTravelStyles();
+  try{
+    const p=await tvApi("/api/travel/profile");
+    const selected=Array.isArray(p.styles)?p.styles:[];
+    const styleChoices=styleTags.map(x=>x.replace(/^.. /,""));
+    const readiness=[
+      ['Travel style',selected.length>0],
+      ['Travel pace',!!p.pace],
+      ['Budget style',!!p.budget_style],
+      ['Home base',!!p.home_base],
+      ['Emergency contact',!!(p.emergency_name&&p.emergency_phone)],
+      ['Travel bio',!!p.bio]
+    ];
+    const done=readiness.filter(x=>x[1]).length;
+    const pct=Math.round(done/readiness.length*100);
+    page.innerHTML=`<div class="pagepad travelProfilePage">
+      <section class="travelProfileHero">
+        <div class="travelProfileHeroGlow"></div>
+        <div class="travelProfileHeroMain">
+          <div class="eyebrow">🏕️ YOUR TRAVEL IDENTITY</div>
+          <h1>Travel Profile</h1>
+          <p>Tell people how you travel, what you enjoy and how to keep your trips safe. This profile helps VibeMeet build better travel matches.</p>
+          <div class="travelProfileHeroActions">
+            <button class="primary" type="button" onclick="saveTravelProfile()">Save changes</button>
+            <button class="secondary travelHeroSecondary" type="button" onclick="render('trips')">Explore trips →</button>
+          </div>
+        </div>
+        <div class="travelReadinessCard">
+          <div class="travelReadinessRing"><strong>${pct}%</strong><span>ready</span></div>
+          <div><b>Trip-ready profile</b><p>${done}/${readiness.length} essentials completed</p></div>
+        </div>
+      </section>
+
+      <div class="travelProfileStats">
+        <div class="travelProfileStat"><span>🧭</span><div><b>${selected.length||0}</b><small>travel styles</small></div></div>
+        <div class="travelProfileStat"><span>⚡</span><div><b>${travelEsc((p.pace||'balanced')).replace(/^./,m=>m.toUpperCase())}</b><small>travel pace</small></div></div>
+        <div class="travelProfileStat"><span>💳</span><div><b>${travelEsc((p.budget_style||'balanced')).replace(/^./,m=>m.toUpperCase())}</b><small>budget style</small></div></div>
+        <div class="travelProfileStat"><span>📍</span><div><b>${travelEsc(p.home_base||user?.city||'Not set')}</b><small>home base</small></div></div>
+      </div>
+
+      <div class="travelProfileLayout">
+        <main class="travelProfileMain">
+          <section class="travelSettingsCard">
+            <div class="travelSectionHead"><div><span class="sectionNumber">01</span><div><h2>Your travel vibe</h2><p>Choose the styles that feel most like you.</p></div></div><span class="saveHint">Changes are saved together</span></div>
+            <div class="travelStyleGrid" id="travelStyles">${styleTags.map(x=>{const label=x.replace(/^.. /,"");return `<button type="button" class="travelStyleChoice ${selected.includes(label)?'selected':''}" data-style="${travelEsc(label)}" onclick="this.classList.toggle('selected')"><span>${travelEsc(x.slice(0,2))}</span><b>${travelEsc(label)}</b><i>✓</i></button>`}).join('')}</div>
+          </section>
+
+          <section class="travelSettingsCard">
+            <div class="travelSectionHead"><div><span class="sectionNumber">02</span><div><h2>How you like to travel</h2><p>These preferences shape trip recommendations.</p></div></div></div>
+            <div class="travelPrefGrid">
+              <label class="travelField"><span>🐢 Travel pace</span><select id="tpPace"><option value="relaxed">Relaxed · slow mornings</option><option value="balanced">Balanced · mix of plans & free time</option><option value="fast">Fast · see more in less time</option></select></label>
+              <label class="travelField"><span>💰 Budget style</span><select id="tpBudget"><option value="budget">Budget · smart & affordable</option><option value="balanced">Balanced · comfort + value</option><option value="comfort">Comfort · premium stays</option></select></label>
+              <label class="travelField full"><span>📍 Home base</span><input id="tpHome" maxlength="80" value="${travelEsc(p.home_base||user?.city||'')}" placeholder="e.g. Haridwar, Delhi, Dehradun"></label>
+            </div>
+          </section>
+
+          <section class="travelSettingsCard safetyProfileCard">
+            <div class="travelSectionHead"><div><span class="sectionNumber">03</span><div><h2>Safety & emergency contact</h2><p>Only use a trusted person. This information is for trip-safety workflows.</p></div></div><span class="safetyPill">🛡️ Private</span></div>
+            <div class="travelSafetyNotice"><span>🔒</span><div><b>Keep someone informed</b><small>Add a contact you trust before joining or hosting trips.</small></div></div>
+            <div class="travelPrefGrid">
+              <label class="travelField"><span>Contact name</span><input id="tpEName" maxlength="80" value="${travelEsc(p.emergency_name||'')}" placeholder="Parent, sibling, friend…"></label>
+              <label class="travelField"><span>Phone number</span><input id="tpEPhone" maxlength="20" inputmode="tel" value="${travelEsc(p.emergency_phone||'')}" placeholder="+91 98XXXXXXXX"></label>
+              <label class="travelField full"><span>Relationship</span><input id="tpERel" maxlength="40" value="${travelEsc(p.emergency_relation||'')}" placeholder="Mother, Father, Brother, Friend…"></label>
+            </div>
+          </section>
+
+          <section class="travelSettingsCard">
+            <div class="travelSectionHead"><div><span class="sectionNumber">04</span><div><h2>Your travel bio</h2><p>Give potential travel companions a quick sense of your vibe.</p></div></div><span id="travelBioCount" class="charCount">0/500</span></div>
+            <textarea id="tpBio" class="travelBioInput" maxlength="500" placeholder="Example: I love mountain road trips, photography and finding local food. I prefer early starts and a balanced budget.">${travelEsc(p.bio||'')}</textarea>
+            <div class="travelBioTips"><span>💡 Mention your trip style</span><span>📷 Add what you enjoy</span><span>🤝 Say what makes a good companion</span></div>
+          </section>
+        </main>
+
+        <aside class="travelProfileSide">
+          <section class="travelChecklistCard">
+            <div class="eyebrow">PROFILE CHECK</div><h3>Make your next trip smoother</h3>
+            <div class="travelCheckList">${readiness.map(([label,ok])=>`<div class="travelCheck ${ok?'done':''}"><span>${ok?'✓':'○'}</span><b>${label}</b>${ok?'<small>Ready</small>':'<small>Add now</small>'}</div>`).join('')}</div>
+          </section>
+          <section class="travelTipCard"><span>✨</span><div><b>Travel with people you trust</b><p>Check profiles, keep conversations on VibeMeet, use trip check-ins and share your itinerary with someone you trust.</p></div></section>
+          <section class="travelSideActions"><button class="secondary full" type="button" onclick="render('going')">🔥 Find people going</button><button class="secondary full" type="button" onclick="render('trips')">🧳 My & nearby trips</button><button class="secondary full" type="button" onclick="render('profile')">👤 Edit main profile</button></section>
+        </aside>
+      </div>
+      <div class="travelProfileSaveBar"><div><b>Ready to travel?</b><span>Your preferences are used to personalize travel discovery.</span></div><button class="primary" type="button" onclick="saveTravelProfile()">Save travel profile</button></div>
+    </div>`;
+    $("tpPace").value=p.pace||"balanced";
+    $("tpBudget").value=p.budget_style||"balanced";
+    const bio=$('tpBio'), count=$('travelBioCount');
+    const updateCount=()=>{if(count)count.textContent=`${bio.value.length}/500`};
+    bio?.addEventListener('input',updateCount); updateCount();
+  }catch(e){
+    page.innerHTML=`<div class="pagepad"><div class="card"><h2>Travel profile couldn't load</h2><p class="muted">${travelEsc(e.message||'Please try again.')}</p><button class="primary" onclick="render('trips')">Back to travel</button></div></div>`;
+  }
 }
 async function saveTravelProfile(){const styles=[...document.querySelectorAll("#travelStyles .selected")].map(x=>x.dataset.style);try{await tvApi("/api/travel/profile",{method:"PATCH",body:{styles,pace:$("tpPace").value,budgetStyle:$("tpBudget").value,homeBase:$("tpHome").value,emergencyName:$("tpEName").value,emergencyPhone:$("tpEPhone").value,emergencyRelation:$("tpERel").value,bio:$("tpBio").value}});toast("🏕️ Travel profile saved.");render("travelProfile")}catch(e){toast(e.message)}}
 window.openTripCreator=openTripCreator;window.openTripPlanner=openTripPlanner;window.openTrip=openTrip;window.openDestination=openDestination;window.requestTrip=requestTrip;window.openTripWorkspace=openTripWorkspace;window.loadTripWorkspace=loadTripWorkspace;window.toggleTripChecklist=toggleTripChecklist;window.addTripChecklist=addTripChecklist;window.addTripExpense=addTripExpense;window.runTripPlanner=runTripPlanner;window.openGoingCreator=openGoingCreator;window.saveTravelProfile=saveTravelProfile;window.closeTravelModal=closeTravelModal;window.filterTrips=filterTrips;window.sendTripCheckin=sendTripCheckin;window.shareTripInfo=shareTripInfo;window.reviewTripRequest=reviewTripRequest;window.completeTrip=completeTrip;
