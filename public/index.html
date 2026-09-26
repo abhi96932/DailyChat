@@ -8,6 +8,7 @@
 <title>VibeMeet — Find Your Vibe</title>
 <link rel="icon" href="/logo.svg">
 <link rel="stylesheet" href="/style.css">
+<link rel="manifest" href="/manifest.webmanifest">
 
 <style>
 /* ===== VibeMeet Professional Opening ===== */
@@ -682,6 +683,10 @@ body{
     <button data-page="profile">👤 Profile</button>
     <button data-page="compatibility">🧩 Compatibility</button>
     <button data-page="settings">⚙ Settings & Safety</button>
+    <button data-page="safety">🛡️ Safety Center</button>
+    <button data-page="matchSettings">❤️ Match Preferences</button>
+    <button data-page="ai">🤖 Vibe AI</button>
+    <button data-page="analytics">📊 Analytics</button>
     <button data-page="vip">♛ VIP</button>
     <button data-page="admin" id="adminNav" class="hidden">⚙ Admin</button>
     <button id="logout" class="logout">Log out</button>
@@ -747,6 +752,7 @@ body{
 <script src="/premium.js"></script>
 <script src="/community.js"></script>
 <script src="/travel.js"></script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));}</script>
 
 <script>
 /*

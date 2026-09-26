@@ -1,0 +1,10 @@
+{
+  "name":"VibeMeet — Find Your Vibe",
+  "short_name":"VibeMeet",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#f7f7fb",
+  "theme_color":"#171329",
+  "description":"Dating, friendship, communities and travel for people who share your vibe.",
+  "icons":[{"src":"/logo.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
