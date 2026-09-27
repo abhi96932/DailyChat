@@ -373,9 +373,11 @@ document.addEventListener('click',e=>{
   }
 });
 let registering=true;
+function setAuthMode(isRegistering){registering=!!isRegistering;$('authTitle').textContent=registering?'Find your people.':'Welcome back.';$('name').classList.toggle('hidden',!registering);$('profileFields').classList.toggle('hidden',!registering);$('guestBtn').classList.toggle('hidden',!registering);$('switch').textContent=registering?'Already have an account? Login':'Create a new account';const age=$('age');if(age)age.required=registering;const profileFields=$('profileFields');if(profileFields)profileFields.querySelectorAll('input,select,textarea').forEach(el=>{if(!registering){el.setCustomValidity('');el.disabled=true}else el.disabled=false})}
+setAuthMode(true);
 $('form').onsubmit=async e=>{e.preventDefault();try{const body=registering?{name:$('name').value,email:$('email').value,password:$('password').value,age:Number($('age').value)||null,city:$('city').value,gender:$('gender').value,matchPreference:$('matchPreference').value,mode:$('mode').value}:{email:$('email').value,password:$('password').value};const d=await api(registering?'/api/auth/register':'/api/auth/login',{method:'POST',body});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
 $('guestBtn').onclick=async()=>{try{const d=await api('/api/auth/guest',{method:'POST'});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
-$('switch').onclick=()=>{registering=!registering;$('authTitle').textContent=registering?'Find your people.':'Welcome back.';$('name').classList.toggle('hidden',!registering);$('profileFields').classList.toggle('hidden',!registering);$('guestBtn').classList.toggle('hidden',!registering);$('switch').textContent=registering?'Already have an account? Login':'Create a new account'};
+$('switch').onclick=()=>setAuthMode(!registering);
 $('logout').onclick=async()=>{try{if(token)await api('/api/auth/logout',{method:'POST'})}catch{}if(socket)socket.disconnect();localStorage.removeItem('vm_user');token=null;user=null;location.reload()};$('hamb').onclick=()=>document.querySelector('aside').classList.toggle('open');
 document.querySelectorAll('aside button[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('aside button[data-page]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render(b.dataset.page);document.querySelector('aside').classList.remove('open')});
 

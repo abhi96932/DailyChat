@@ -12,12 +12,9 @@ test("roadmap v9 safety, verification, matching, AI and analytics endpoints are 
   assert.match(app,/Safety Center/);assert.match(app,/Discovery Preferences/);assert.match(app,/Vibe AI/);assert.match(app,/Activity & growth/);
 });
 test("privacy, account export and mobile PWA hooks are present",()=>{assert.match(server,/app.delete\('\/api\/me'/);assert.match(server,/password-reset\/request/);assert.match(index,/manifest.webmanifest/);assert.match(index,/serviceWorker.register/);assert.match(app,/toggleVoiceRecord/);assert.match(app,/unsendMessage/);});
-<<<<<<< HEAD
-=======
 
 test("Likes You identity is paywalled for free users",()=>{
   assert.match(server,/const visibleCount = vipActive\s*\? incomingRows\.length\s*:\s*Math\.min\(incomingRows\.length, paidExtraLikes\)/);
   assert.match(app,/The next Like You profile is hidden until you reveal it/);
   assert.match(app,/Reveal 1 · ₹19/);
 });
->>>>>>> dedd878 ( Fixed Likes not Shown to Non-VIP user without payment)
