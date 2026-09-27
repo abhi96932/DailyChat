@@ -507,9 +507,11 @@ app.get("/api/likes",auth,async(req,res)=>{
 
   const paidExtraLikes = revealedLikes.rows[0]?.count || 0;
 
+  // Free users can see that they have Likes You, but the identity/profile stays locked.
+  // Each paid extra_like reveal unlocks exactly one incoming like; VibeMeet+ unlocks all.
   const visibleCount = vipActive
     ? incomingRows.length
-    : Math.min(incomingRows.length, 1 + paidExtraLikes);
+    : Math.min(incomingRows.length, paidExtraLikes);
 
   res.json({
     incoming: incomingRows.slice(0, visibleCount),

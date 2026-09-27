@@ -102,10 +102,16 @@ npm test
 
 Current smoke tests: **8 passed**.
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> dedd878 ( Fixed Likes not Shown to Non-VIP user without payment)
 
 ## Beta UX patch
 - Likes You now shows a clear locked preview when likes are hidden behind the reveal/VIP gate instead of an empty-state message.
 - Likes You count uses total incoming likes, not only currently revealed cards.
 - Like/Super Like notifications open the Likes You tab directly.
+<<<<<<< HEAD
 >>>>>>> 70c55ef (Fix Likes You locked profile experience)
+=======
+>>>>>>> dedd878 ( Fixed Likes not Shown to Non-VIP user without payment)
