@@ -96,7 +96,7 @@ if(!document.getElementById('notificationStyles')){
       overflow:auto;
     }
 
-    .notificationItem{
+    .notificationItem{cursor:pointer;position:relative;
       display:flex;
       gap:12px;
       padding:14px 16px;
@@ -125,7 +125,7 @@ if(!document.getElementById('notificationStyles')){
       font-size:20px;
     }
 
-    .notificationContent{
+    .notificationArrow{margin-left:auto;align-self:center;color:#8b7bb6;font-size:24px;line-height:1}.notificationContent{
       min-width:0;
       flex:1;
     }
@@ -272,17 +272,41 @@ function renderNotifications(){
       : `<div class="notificationAvatar">${notificationIcon(n.type)}</div>`;
 
     return `
-      <div class="notificationItem ${n.read_at?'':'unread'}">
+      <div class="notificationItem ${n.read_at?'':'unread'}" onclick="openNotification(${Number(n.id)},'${esc(n.type||'')}')" role="button" tabindex="0">
         ${avatar}
         <div class="notificationContent">
           <div class="notificationTitle">${esc(n.title)}</div>
           ${n.body?`<div class="notificationBody">${esc(n.body)}</div>`:''}
           <div class="notificationTime">${notificationTime(n.created_at)}</div>
         </div>
+        <span class="notificationArrow">›</span>
         ${n.read_at?'':'<span class="notificationDot"></span>'}
       </div>
     `;
   }).join('');
+}
+
+async function openNotification(id,type){
+  try{await api('/api/notifications/read',{method:'POST'});}catch{}
+  notifications=notifications.map(n=>({...n,read_at:n.read_at||new Date().toISOString()}));
+  renderNotifications();
+  if(type==='like' || type==='super_like'){
+    notificationsOpen=false;
+    $('notificationsPanel')?.classList.add('hidden');
+    renderMatches('likes');
+  }else if(type==='match'){
+    notificationsOpen=false;
+    $('notificationsPanel')?.classList.add('hidden');
+    renderMatches('matches');
+  }else if(type==='message'){
+    notificationsOpen=false;
+    $('notificationsPanel')?.classList.add('hidden');
+    render('messages');
+  }else if(type==='trip_invite' || type==='trip_checkin' || type==='event_reminder'){
+    notificationsOpen=false;
+    $('notificationsPanel')?.classList.add('hidden');
+    render('events');
+  }
 }
 
 async function loadNotifications(){
@@ -537,35 +561,16 @@ function showMatchCelebration(x){const old=document.getElementById('matchCelebra
 async function swipe(i,direction){const x=discover[i];if(!x)return;try{const r=await api('/api/swipes',{method:'POST',body:{targetId:x.id,direction}});discover.splice(i,1);if(r.matched){showMatchCelebration(x);return}render('home')}catch(e){toast(e.message)}}
 async function swipeById(id,direction){const x=discover.find(p=>Number(p.id)===Number(id));if(x){const i=discover.findIndex(p=>Number(p.id)===Number(id));return swipe(i,direction)}try{await api('/api/swipes',{method:'POST',body:{targetId:Number(id),direction}});render('explore')}catch(e){toast(e.message)}}
 async function superLike(i){const x=discover[i];if(!x)return;try{const order=await api('/api/features/order',{method:'POST',body:{product:'super_like'}});await loadRazorpay();const checkout=new Razorpay({key:order.keyId,amount:order.amount,currency:'INR',name:'VibeMeet',description:'Super Like · ₹49',order_id:order.orderId,prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},modal:{ondismiss:()=>toast('Super Like payment cancelled')},handler:async payment=>{try{await api('/api/features/verify',{method:'POST',body:{orderId:payment.razorpay_order_id,paymentId:payment.razorpay_payment_id,signature:payment.razorpay_signature}});const r=await api('/api/super-likes/use',{method:'POST',body:{targetId:x.id}});discover.splice(i,1);if(r.matched){showMatchCelebration(x);return}toast('⭐ Super Like sent');render('home')}catch(e){toast(e.message)}}});checkout.open()}catch(e){toast(e.message)}}
-async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab=tab;const [m,likes]=await Promise.all([api('/api/matches'),api('/api/likes')]);const incoming=likes.incoming||[],outgoing=likes.outgoing||[];const tabBtn=(key,label,count)=>`<button class="matchTab ${tab===key?'active':''}" onclick="renderMatches('${key}')">${label}<span>${count}</span></button>`;const matchCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge">💞 Match</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">You both liked each other ✨</div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button><button class="danger" onclick="unmatchFromMatches(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}','${esc(x.avatar||'')}')">💔 Unmatch</button></div></div></article>`;const likeCard=x=>`<article class="matchCardPro likeCard"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge newLike">${x.super_liked?'⭐ Super Like':'✨ New like'}</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Liked you • ${esc(x.course||'')}</div><div class="actions"><button class="primary" onclick="respondToLike(${x.user_id},'like')">❤️ Like back</button><button class="secondary" onclick="respondToLike(${x.user_id},'pass')">Pass</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div></article>`;const sentCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge sentLike">💙 Sent like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Waiting for them to like you back</div><div class="actions"><button class="secondary" onclick="viewProfile(${x.user_id})">View profile</button></div></div></article>`;let title='',sub='',cards='';if(tab==='likes'){title='Likes you';sub='People who already liked you. Like them back to make an instant match.';const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
-if((likes.incomingCount||0)>0){
-  const visibleCount = vipActive ? incoming.length : 0;
-  cards = incoming.slice(0, visibleCount).map(likeCard).join('');
-
-  if(!vipActive && likes.lockedCount>0){
-    cards+=`
-      <article class="card vipLikesUpsell">
-        <div class="vipLikesIcon">💌</div>
-        <div>
-          <div class="eyebrow">MORE PEOPLE LIKE YOU</div>
-          <h3>${likes.lockedCount} more ${likes.lockedCount===1?'person':'people'} are waiting</h3>
-          <p class="muted">
-            Reveal the next person who liked you for just ₹19.
-            VIP members see everyone automatically.
-          </p>
-
-          <button class="primary" onclick="buyExtraLike()">
-            💌 Reveal 1 more · ₹19
-          </button>
-
-          <button class="secondary" style="margin-left:8px" onclick="render('vip')">
-            💎 Get VIP
-          </button>
-        </div>
-      </article>
-    `;
+async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab=tab;const [m,likes]=await Promise.all([api('/api/matches'),api('/api/likes')]);const incoming=likes.incoming||[],outgoing=likes.outgoing||[];const incomingCount=Number(likes.incomingCount??incoming.length);const lockedCount=Number(likes.lockedCount??Math.max(0,incomingCount-incoming.length));const tabBtn=(key,label,count)=>`<button class="matchTab ${tab===key?'active':''}" onclick="renderMatches('${key}')">${label}<span>${count}</span></button>`;const matchCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge">💞 Match</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">You both liked each other ✨</div><div class="actions"><button class="primary" onclick="messageUser(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}')">💬 Message</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button><button class="danger" onclick="unmatchFromMatches(${x.user_id},'${esc(x.name).replace(/'/g,"\\'")}','${esc(x.avatar||'')}')">💔 Unmatch</button></div></div></article>`;const likeCard=x=>`<article class="matchCardPro likeCard"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge newLike">${x.super_liked?'⭐ Super Like':'✨ New like'}</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Liked you • ${esc(x.course||'')}</div><div class="actions"><button class="primary" onclick="respondToLike(${x.user_id},'like')">❤️ Like back</button><button class="secondary" onclick="respondToLike(${x.user_id},'pass')">Pass</button><button class="secondary" onclick="viewProfile(${x.user_id})">Profile</button></div></div></article>`;const sentCard=x=>`<article class="matchCardPro"><div class="matchPhoto">${avatarHtml(x.avatar,'matchPhotoImg')}<span class="matchBadge sentLike">💙 Sent like</span></div><div class="matchCardBody"><div class="matchName"><h3>${esc(x.name)} ${x.verified?'✓':''}</h3><span>${x.age||'—'} · ${esc(x.city||'')}</span></div><div class="matchSub">Waiting for them to like you back</div><div class="actions"><button class="secondary" onclick="viewProfile(${x.user_id})">View profile</button></div></div></article>`;let title='',sub='',cards='';if(tab==='likes'){title='Likes you';sub='People who already liked you. Like them back to make an instant match.';const vipActive=!!(user?.vip_until&&new Date(user.vip_until)>new Date());
+  if(vipActive){
+    cards=incoming.map(likeCard).join('');
+  }else{
+    if(incoming.length) cards=incoming.map(likeCard).join('');
+    if(lockedCount>0){
+      cards+=`<article class="card vipLikesUpsell"><div class="vipLikesLockedPreview"><div class="lockedHeart">💗</div><div class="lockedDots">•••</div></div><div><div class="eyebrow">💌 SOMEONE LIKES YOU</div><h3>${lockedCount} ${lockedCount===1?'person is':'people are'} waiting for you</h3><p class="muted">The next Like You profile is hidden until you reveal it. You can reveal one for ₹19 or unlock all Likes You with VibeMeet+.</p><button class="primary" onclick="buyExtraLike()">💌 Reveal 1 · ₹19</button><button class="secondary" style="margin-left:8px" onclick="render('vip')">💎 Get VibeMeet+</button></div></article>`;
+    }
   }
-}else{cards=''} }else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incoming.length)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}
+}else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incomingCount)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}
 function professionalConfirm({title='Unmatch this person?',message='This will remove your match and end the connection.',name='',photo='',confirmText='Unmatch',danger=true}={}){return new Promise(resolve=>{const existing=$('professionalConfirmModal');if(existing)existing.remove();const modal=document.createElement('div');modal.id='professionalConfirmModal';modal.className='proConfirmOverlay';const safePhoto=photo&&String(photo).startsWith('data:image/')?`<img src="${esc(photo)}" alt="" class="proConfirmAvatar">`:'<div class="proConfirmAvatar proConfirmFallback">💔</div>';modal.innerHTML=`<div class="proConfirmCard" role="dialog" aria-modal="true" aria-labelledby="proConfirmTitle"><button class="proConfirmClose" aria-label="Close">×</button><div class="proConfirmIcon">💔</div><div class="proConfirmPerson">${safePhoto}<div><div class="proConfirmEyebrow">CONFIRM ACTION</div><h3 id="proConfirmTitle">${esc(title)}</h3>${name?`<div class="proConfirmName">${esc(name)}</div>`:''}</div></div><p class="proConfirmMessage">${esc(message)}</p><div class="proConfirmNote">This action can’t be undone from this screen.</div><div class="proConfirmActions"><button class="secondary proConfirmCancel">Cancel</button><button class="${danger?'danger':'primary'} proConfirmOk">${esc(confirmText)}</button></div></div>`;document.body.appendChild(modal);const finish=value=>{modal.remove();resolve(value)};modal.querySelector('.proConfirmClose').onclick=()=>finish(false);modal.querySelector('.proConfirmCancel').onclick=()=>finish(false);modal.querySelector('.proConfirmOk').onclick=()=>finish(true);modal.onclick=e=>{if(e.target===modal)finish(false)};const key=e=>{if(e.key==='Escape'){finish(false);document.removeEventListener('keydown',key)}};document.addEventListener('keydown',key);setTimeout(()=>modal.querySelector('.proConfirmOk')?.focus(),30)})}
 
 async function unmatchFromMatches(userId,name,photo=''){if(!(await professionalConfirm({title:'Unmatch this person?',message:`Your match with ${name} will be removed. You won’t be able to continue this connection unless you match again in the future.`,name,photo,confirmText:'Yes, unmatch'})))return;try{await api(`/api/matches/${userId}`,{method:'DELETE'});toast(`Unmatched with ${name}`);renderMatches('matches')}catch(e){toast(e.message)}}
@@ -1439,7 +1444,7 @@ function endCall(notify=true){if(notify&&currentCallPeer)socket?.emit('call:end'
 $('search').oninput=async e=>{const qv=e.target.value.trim().toLowerCase();if(!qv)return document.querySelector('.searchResults')?.remove();try{const [ps,gs,es]=await Promise.all([api('/api/discover'),api('/api/groups'),api('/api/events')]);let box=document.querySelector('.searchResults');if(!box){box=document.createElement('div');box.className='searchResults';document.querySelector('header').appendChild(box)}const out=[...ps.filter(x=>x.name.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="viewProfile(${x.id})">👤 ${esc(x.name)}</div>`),...gs.filter(x=>x.name.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="render('groups')">${x.icon} ${esc(x.name)}</div>`),...es.filter(x=>x.title.toLowerCase().includes(qv)).slice(0,5).map(x=>`<div class="searchItem" onclick="render('events')">📅 ${esc(x.title)}</div>`)];box.innerHTML=out.join('')||'<div class="searchItem muted">No results</div>'}catch{}}
 
 document.head.insertAdjacentHTML('beforeend',`<style>.chatImagePreview{display:block;padding:0;border:0;background:transparent;text-align:left;max-width:100%;cursor:zoom-in}.chatImageLightbox{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:28px;cursor:zoom-out}.chatImageLightbox img{max-width:94vw;max-height:90vh;object-fit:contain;border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.45)}.chatImageClose{position:absolute;top:18px;right:22px;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:30px;line-height:1;cursor:pointer}
-.vipLikesUpsell{display:flex;align-items:center;gap:18px;padding:22px;grid-column:1/-1;background:linear-gradient(135deg,rgba(43,169,255,.08),rgba(211,91,255,.10));border:1px solid rgba(91,77,230,.14)}
+.vipLikesLockedPreview{width:78px;height:92px;border-radius:20px;background:linear-gradient(145deg,#eee9fb,#f8eef7);display:grid;place-items:center;position:relative;flex:0 0 auto;overflow:hidden}.lockedHeart{font-size:34px;filter:blur(.3px)}.lockedDots{position:absolute;bottom:9px;letter-spacing:5px;font-weight:900;color:#8a7bb8}.vipLikesUpsell{display:flex;align-items:center;gap:18px;padding:22px;grid-column:1/-1;background:linear-gradient(135deg,rgba(43,169,255,.08),rgba(211,91,255,.10));border:1px solid rgba(91,77,230,.14)}
 .vipLikesIcon{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,#eaf7ff,#f8eaff);flex:0 0 auto}
 .vipLikesUpsell h3{margin:4px 0 6px}
 .vipLikesUpsell p{margin:0 0 12px}

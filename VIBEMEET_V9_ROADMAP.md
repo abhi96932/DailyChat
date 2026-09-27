@@ -101,3 +101,11 @@ npm test
 ```
 
 Current smoke tests: **8 passed**.
+<<<<<<< HEAD
+=======
+
+## Beta UX patch
+- Likes You now shows a clear locked preview when likes are hidden behind the reveal/VIP gate instead of an empty-state message.
+- Likes You count uses total incoming likes, not only currently revealed cards.
+- Like/Super Like notifications open the Likes You tab directly.
+>>>>>>> 70c55ef (Fix Likes You locked profile experience)
