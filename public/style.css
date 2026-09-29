@@ -326,3 +326,255 @@ header input::placeholder{color:#9894a7}
   .matchSectionTitle{padding-top:4px}
   .matchCelebration{padding:12px!important}.matchCelebrateCard{width:min(94vw,430px)!important;padding:22px 15px!important;border-radius:25px!important}.matchCelebratePhoto{width:108px!important;height:108px!important;margin:14px auto!important}.matchCelebrateActions{display:grid!important;grid-template-columns:1fr!important}.matchCelebrateActions button{width:100%;min-width:0!important}
 }
+
+
+/* =========================================================
+   VibeMeet UI Polish — Mobile + Sidebar
+   UI-only: no likes/paywall/business logic changes.
+   ========================================================= */
+
+:root {
+  --vm-sidebar-bg: #11142f;
+  --vm-sidebar-panel: #1a1d42;
+  --vm-sidebar-text: #f7f7ff;
+  --vm-sidebar-muted: #b8b9d4;
+  --vm-sidebar-hover: rgba(255,255,255,.09);
+  --vm-sidebar-active: linear-gradient(135deg, rgba(111,82,255,.48), rgba(231,70,164,.34));
+  --vm-sidebar-border: rgba(255,255,255,.10);
+}
+
+/* Global touch/scroll behavior */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Sidebar: reliable viewport-height scrolling */
+.sidebar,
+.sideNav,
+nav.sidebar,
+.drawer,
+.mobileDrawer {
+  max-height: 100dvh;
+  max-height: 100svh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Common sidebar internals used by the different layout generations */
+.sidebar .nav,
+.sidebar .navList,
+.sidebar .sidebarNav,
+.sideNav .nav,
+.drawer .nav,
+.mobileDrawer .nav {
+  min-height: 0;
+  overflow: visible;
+}
+
+/* VibeMeet sidebar contrast */
+.sidebar a,
+.sidebar button,
+.sideNav a,
+.sideNav button,
+.drawer a,
+.drawer button,
+.mobileDrawer a,
+.mobileDrawer button {
+  color: var(--vm-sidebar-text);
+}
+
+.sidebar .muted,
+.sidebar small,
+.sideNav .muted,
+.drawer .muted,
+.mobileDrawer .muted {
+  color: var(--vm-sidebar-muted);
+}
+
+.sidebar a:hover,
+.sidebar button:hover,
+.sideNav a:hover,
+.sideNav button:hover,
+.drawer a:hover,
+.drawer button:hover,
+.mobileDrawer a:hover,
+.mobileDrawer button:hover {
+  color: #fff;
+  background: var(--vm-sidebar-hover);
+}
+
+.sidebar a:focus-visible,
+.sidebar button:focus-visible,
+.sideNav a:focus-visible,
+.sideNav button:focus-visible,
+.drawer a:focus-visible,
+.drawer button:focus-visible,
+.mobileDrawer a:focus-visible,
+.mobileDrawer button:focus-visible {
+  outline: 2px solid rgba(255,255,255,.72);
+  outline-offset: 2px;
+}
+
+.sidebar [data-page].active,
+.sidebar [data-page][aria-current="page"],
+.sideNav [data-page].active,
+.sideNav [data-page][aria-current="page"],
+.drawer [data-page].active,
+.drawer [data-page][aria-current="page"],
+.mobileDrawer [data-page].active,
+.mobileDrawer [data-page][aria-current="page"] {
+  color: #fff;
+  background: var(--vm-sidebar-active);
+  border-color: var(--vm-sidebar-border);
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+}
+
+/* Keep long sidebar lists reachable on smaller screens */
+@media (min-width: 769px) {
+  .sidebar,
+  .sideNav {
+    height: 100dvh;
+    height: 100svh;
+    position: sticky;
+    top: 0;
+  }
+}
+
+/* Mobile: reserve space for fixed bottom navigation and safe-area inset */
+@media (max-width: 768px) {
+  body {
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
+  main,
+  #app,
+  #page,
+  .appMain,
+  .main,
+  .content {
+    min-height: 0;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .pagepad,
+  .page,
+  .profilePage,
+  .profileSetup,
+  .setupPage,
+  .formPage {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  }
+
+  /* Bottom navigation must sit above the safe area without covering content */
+  .bottomNav,
+  .mobileNav,
+  .mobile-bottom-nav,
+  nav.bottom-nav {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    min-height: calc(68px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+
+  /* Forms should scroll naturally on touch devices */
+  form,
+  .formCard,
+  .profile-form,
+  .profileForm,
+  .setup-form,
+  .profileSetup {
+    scroll-margin-bottom: calc(110px + env(safe-area-inset-bottom));
+  }
+
+  /* Action bars/buttons remain visible above bottom navigation */
+  .formActions,
+  .profileActions,
+  .setupActions,
+  .wizardActions,
+  .stickyActions,
+  .stepActions {
+    position: relative;
+    z-index: 5;
+    margin-bottom: calc(18px + env(safe-area-inset-bottom));
+    padding-bottom: 8px;
+  }
+
+  .formActions button,
+  .profileActions button,
+  .setupActions button,
+  .wizardActions button,
+  .stickyActions button,
+  .stepActions button {
+    min-height: 48px;
+  }
+
+  /* Prevent oversized desktop cards from breaking mobile scrolling */
+  .card,
+  .panel,
+  .sectionHero,
+  .hero,
+  .profileCard {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Drawer occupies the full usable mobile height and scrolls independently */
+  .drawer,
+  .mobileDrawer,
+  .sideNav {
+    height: 100dvh;
+    height: 100svh;
+    max-height: 100dvh;
+    max-height: 100svh;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Slightly larger tap targets */
+  .sidebar a,
+  .sidebar button,
+  .drawer a,
+  .drawer button,
+  .mobileDrawer a,
+  .mobileDrawer button {
+    min-height: 44px;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 390px) {
+  .bottomNav,
+  .mobileNav,
+  .mobile-bottom-nav,
+  nav.bottom-nav {
+    min-height: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  body {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  main,
+  #app,
+  #page,
+  .appMain,
+  .main,
+  .content {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
