@@ -378,7 +378,11 @@ setAuthMode(true);
 $('form').onsubmit=async e=>{e.preventDefault();try{const body=registering?{name:$('name').value,email:$('email').value,password:$('password').value,age:Number($('age').value)||null,city:$('city').value,gender:$('gender').value,matchPreference:$('matchPreference').value,mode:$('mode').value}:{email:$('email').value,password:$('password').value};const d=await api(registering?'/api/auth/register':'/api/auth/login',{method:'POST',body});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
 $('guestBtn').onclick=async()=>{try{const d=await api('/api/auth/guest',{method:'POST'});save(d.user,d.token)}catch(e){$('authMsg').textContent=e.message}};
 $('switch').onclick=()=>setAuthMode(!registering);
-$('logout').onclick=async()=>{try{if(token)await api('/api/auth/logout',{method:'POST'})}catch{}if(socket)socket.disconnect();localStorage.removeItem('vm_user');token=null;user=null;location.reload()};$('hamb').onclick=()=>document.querySelector('aside').classList.toggle('open');
+$('logout').onclick=async()=>{try{if(token)await api('/api/auth/logout',{method:'POST'})}catch{}if(socket)socket.disconnect();localStorage.removeItem('vm_user');token=null;user=null;location.reload()};
+function closeMobileDrawer(){document.querySelector('aside')?.classList.remove('open');$('drawerBackdrop')?.classList.remove('open');document.body.classList.remove('drawerOpen')}
+$('hamb').onclick=()=>{const a=document.querySelector('aside');const open=!a.classList.contains('open');a.classList.toggle('open',open);$('drawerBackdrop')?.classList.toggle('open',open);document.body.classList.toggle('drawerOpen',open)};
+$('drawerBackdrop')?.addEventListener('click',closeMobileDrawer);
+document.querySelectorAll('aside [data-page]').forEach(btn=>btn.addEventListener('click',closeMobileDrawer));
 document.querySelectorAll('aside button[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('aside button[data-page]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render(b.dataset.page);document.querySelector('aside').classList.remove('open')});
 
 function msgHtml(m){messageCache.set(Number(m.id),m);const mine=Number(m.sender_id??m.user_id??m.from_id)===Number(user?.id);const name=m.sender_name||m.name||m.sender||(mine?user?.name:'Member');const body=m.body||m.message||'';const time=m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const image=m.attachment_data&&m.attachment_mime&&m.attachment_kind!=='audio'?`<button type="button" class="chatImagePreview" onclick="openChatImage(decodeURIComponent('${encodeURIComponent(m.attachment_data)}'))" aria-label="Open image"><img src="${esc(m.attachment_data)}" alt="Shared image" style="max-width:220px;border-radius:14px;display:block;margin-top:7px;cursor:zoom-in"></button>`:'';const voice=m.attachment_data&&m.attachment_kind==='audio'?`<audio controls preload="metadata" src="${esc(m.attachment_data)}" style="max-width:250px;margin-top:8px"></audio>`:'';const receipt=mine?`<span class="msgReceipt" data-msg-id="${m.id||''}">${m.read_at?'Seen ✓✓':'Sent ✓'}</span>`:'';const reply=m.reply_to_id?`<button type="button" class="msgReplyQuote" onclick="jumpToMessage(${m.reply_to_id})"><b>${esc(m.reply_sender_name||'Reply')}</b><span>${esc(m.reply_body||'[Message]')}</span></button>`:'';const reactions=Array.isArray(m.reactions)&&m.reactions.length?`<div class="msgReactions">${m.reactions.map(r=>`<button type="button" class="reactionPill ${r.mine?'mine':''}" onclick="reactToMessage(${m.id},'${esc(r.emoji)}')">${esc(r.emoji)} ${r.count}</button>`).join('')}</div>`:'';const tools=`<div class="msgTools"><button type="button" onclick="replyToMessage(${m.id})">↩ Reply</button><button type="button" onclick="reactToMessage(${m.id},'❤️')">❤️</button><button type="button" onclick="reactToMessage(${m.id},'😂')">😂</button><button type="button" onclick="reactToMessage(${m.id},'👍')">👍</button>${mine?`<button type="button" onclick="unsendMessage(${m.id})">↶ Unsend</button>`:''}</div>`;return `<div class="msg ${mine?'mine':''}" data-msg-id="${m.id||''}">${mine?'':`<div style="font-size:11px;font-weight:800;opacity:.7;margin-bottom:3px">${esc(name)}</div>`}${reply}<div>${esc(body)}</div>${image}${voice}${reactions}${time?`<small style="display:block;margin-top:4px;opacity:.55;font-size:10px">${esc(time)} ${receipt}</small>`:receipt}${tools}</div>`}
@@ -452,66 +456,28 @@ async function finishOnboarding(){try{const body={name:user.name,age:user.age,ci
 
 async function render(p){try{api('/api/analytics/events',{method:'POST',body:{event:p==='home'?'discover_view':`page_${p}`}}).catch(()=>{});if(p==='home')return renderHome();if(p==='explore')return renderExplore();if(p==='matches')return renderMatches();if(p==='groups')return renderGroups();if(p==='events')return renderEvents();if(p==='messages')return renderMessages();if(p==='calls')return renderCalls();if(p==='profile')return renderProfile();if(p==='compatibility')return renderCompatibility();if(p==='settings')return renderSettings();if(p==='safety')return renderSafety();if(p==='matchSettings')return renderMatchSettings();if(p==='ai')return renderAI();if(p==='analytics')return renderAnalytics();if(p==='vip')return renderVip();if(p==='admin')return renderAdmin()}catch(e){page.innerHTML=`<div class="pagepad"><div class="card"><h3>Something went wrong</h3><p class="muted">${esc(e.message)}</p><button class="primary" onclick="render('home')">Back to Discover</button></div></div>`}}
 
-async function buyExtraLike(){
+async function buyExtraLike(revealSwipeId){
+  const swipeId=Number(revealSwipeId);
+  if(!Number.isInteger(swipeId)){toast('Choose a Like You profile to reveal.');return;}
   try{
-    const order = await api('/api/features/order',{
-      method:'POST',
-      body:{product:'extra_like'}
-    });
-
+    const order=await api('/api/features/order',{method:'POST',body:{product:'extra_like',revealSwipeId:swipeId}});
     await loadRazorpay();
-
-    const checkout = new Razorpay({
-      key:order.keyId,
-      amount:order.amount,
-      currency:'INR',
-      name:'VibeMeet',
-      description:'Reveal 1 more Like You · ₹19',
-      order_id:order.orderId,
-
-      prefill:{
-        name:user?.name || '',
-        email:user?.email || ''
-      },
-
-      theme:{
-        color:'#6b4ce6'
-      },
-
-      modal:{
-        ondismiss:()=>toast('Payment cancelled')
-      },
-
+    const checkout=new Razorpay({
+      key:order.keyId,amount:order.amount,currency:'INR',name:'VibeMeet',
+      description:'Reveal this Like You · ₹19',order_id:order.orderId,
+      prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},
+      modal:{ondismiss:()=>toast('Payment cancelled')},
       handler:async payment=>{
         try{
-          await api('/api/features/verify',{
-            method:'POST',
-            body:{
-              orderId:payment.razorpay_order_id,
-              paymentId:payment.razorpay_payment_id,
-              signature:payment.razorpay_signature
-            }
-          });
-
-          await api('/api/features/use',{
-            method:'POST',
-            body:{product:'extra_like'}
-          });
-
-          toast('💌 One more Like You revealed!');
+          await api('/api/features/verify',{method:'POST',body:{orderId:payment.razorpay_order_id,paymentId:payment.razorpay_payment_id,signature:payment.razorpay_signature}});
+          await api('/api/features/use',{method:'POST',body:{product:'extra_like',revealSwipeId:swipeId}});
+          toast('💌 Like You revealed');
           renderMatches('likes');
-
-        }catch(e){
-          toast(e.message);
-        }
+        }catch(e){toast(e.message)}
       }
     });
-
     checkout.open();
-
-  }catch(e){
-    toast(e.message);
-  }
+  }catch(e){toast(e.message)}
 }
 
 async function renderHome(){
@@ -567,9 +533,11 @@ async function renderMatches(tab=window.matchesTab||'matches'){window.matchesTab
   if(vipActive){
     cards=incoming.map(likeCard).join('');
   }else{
-    if(incoming.length) cards=incoming.map(likeCard).join('');
-    if(lockedCount>0){
-      cards+=`<article class="card vipLikesUpsell"><div class="vipLikesLockedPreview"><div class="lockedHeart">💗</div><div class="lockedDots">•••</div></div><div><div class="eyebrow">💌 SOMEONE LIKES YOU</div><h3>${lockedCount} ${lockedCount===1?'person is':'people are'} waiting for you</h3><p class="muted">The next Like You profile is hidden until you reveal it. You can reveal one for ₹19 or unlock all Likes You with VibeMeet+.</p><button class="primary" onclick="buyExtraLike()">💌 Reveal 1 · ₹19</button><button class="secondary" style="margin-left:8px" onclick="render('vip')">💎 Get VibeMeet+</button></div></article>`;
+    cards=incoming.map(likeCard).join('');
+    const locked=Array.isArray(likes.locked)?likes.locked:[];
+    if(locked.length){
+      cards+=locked.map((x,i)=>`<article class="matchCardPro lockedLikeCard"><div class="lockedLikeVisual"><div class="lockedHeart">💗</div><span>${x.super_liked?'⭐ Super Like received':'💌 Someone likes you'}</span></div><div class="matchCardBody"><div class="eyebrow">PRIVATE LIKE ${i+1}</div><h3>Someone already liked you</h3><p class="muted">Their profile is hidden until you choose to reveal this Like You.</p><div class="actions"><button class="primary" onclick="buyExtraLike(${Number(x.swipe_id)})">💌 Reveal · ₹19</button></div></div></article>`).join('');
+      cards+=`<article class="card vipLikesUpsell"><div class="vipLikesIcon">💎</div><div><div class="eyebrow">VIBEMEET+</div><h3>See every Like You instantly</h3><p class="muted">VIP removes the per-profile reveal fee and unlocks every incoming like while your membership is active.</p><button class="secondary" onclick="render('vip')">💎 Get VibeMeet+</button></div></article>`;
     }
   }
 }else if(tab==='sent'){title='Your likes';sub='People you’ve liked who haven’t matched with you yet.';cards=outgoing.map(sentCard).join('')}else{title='Your matches';sub='Mutual likes become connections. Start the conversation.';cards=m.map(matchCard).join('')}if(!cards){cards=`<div class="card matchEmpty"><div class="emptyEmoji">${tab==='likes'?'💌':tab==='sent'?'💙':'💞'}</div><h3>${tab==='likes'?'No new likes yet':tab==='sent'?'No pending likes':'No matches yet'}</h3><p class="muted">${tab==='likes'?'When someone likes you, they’ll appear here.':tab==='sent'?'Discover someone you like and send a heart.':'Like people you vibe with. When they like you back, you’ll match.'}</p><button class="primary" onclick="render('home')">✨ Start discovering</button></div>`}page.innerHTML=`<div class="pagepad matchesPage"><section class="sectionHero compactHero matchesHero"><div><div class="eyebrow">YOUR CONNECTIONS 💗</div><h1>Matches</h1><p>Find mutual chemistry, see who likes you and keep your next connection moving.</p></div><div class="heroBadge"><b>${m.length}</b><span>matches</span></div></section><div class="matchTabs">${tabBtn('matches','💞 Matches',m.length)}${tabBtn('likes','❤️ Likes you',incomingCount)}${tabBtn('sent','💙 Your likes',outgoing.length)}</div><div class="title matchSectionTitle"><div><h2>${title}</h2><p class="muted">${sub}</p></div></div><div class="matchGridPro">${cards}</div></div>`}

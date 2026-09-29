@@ -14,7 +14,17 @@ test("roadmap v9 safety, verification, matching, AI and analytics endpoints are 
 test("privacy, account export and mobile PWA hooks are present",()=>{assert.match(server,/app.delete\('\/api\/me'/);assert.match(server,/password-reset\/request/);assert.match(index,/manifest.webmanifest/);assert.match(index,/serviceWorker.register/);assert.match(app,/toggleVoiceRecord/);assert.match(app,/unsendMessage/);});
 
 test("Likes You identity is paywalled for free users",()=>{
-  assert.match(server,/const visibleCount = vipActive\s*\? incomingRows\.length\s*:\s*Math\.min\(incomingRows\.length, paidExtraLikes\)/);
-  assert.match(app,/The next Like You profile is hidden until you reveal it/);
-  assert.match(app,/Reveal 1 · ₹19/);
+  assert.match(server,/reveal_swipe_id/);
+  assert.match(server,/const visible = vipActive/);
+  assert.match(server,/const locked = vipActive/);
+  assert.match(app,/buyExtraLike\(\$\{Number\(x\.swipe_id\)\}\)/);
+  assert.match(app,/likes\.locked/);
+});
+
+test("Mobile drawer has backdrop and scroll-safe shell",()=>{
+  assert.match(app,/drawerBackdrop/);
+  assert.match(index,/id="drawerBackdrop"/);
+  const css=fs.readFileSync(new URL("../public/style.css",import.meta.url),"utf8");
+  assert.match(css,/drawerBackdrop/);
+  assert.match(css,/overscroll-behavior:contain/);
 });

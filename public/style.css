@@ -272,3 +272,57 @@ header input::placeholder{color:#9894a7}
 
 /* VibeMeet roadmap v9 */
 .twoColSafety{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.safetyStatusBadge{padding:10px 14px;border-radius:999px;background:#f1edff;color:#5d48c8;font-weight:900}.toggleRow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #eee}.toggleRow input{width:20px;height:20px;accent-color:#6d5dfc}.verifiedBig{padding:14px;border-radius:14px;background:#eefaf2;color:#15803d;font-weight:900;margin-top:12px}.safetyContact,.safetyShare{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #eee}.safetyContact small,.safetyShare small{display:block;color:#777;font-size:11px;margin-top:3px}.safetyRuleGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.safetyRuleGrid div{padding:14px;border-radius:15px;background:#f7f5ff;color:#4f438d;font-weight:800}.aiGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.aiGrid textarea{min-height:120px;width:100%;margin:10px 0;padding:13px;border:1px solid #e2e3ec;border-radius:14px;resize:vertical}.aiResult{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #eee;border-radius:15px;margin-top:8px;cursor:pointer}.aiResult small,.aiResult span{display:block;color:#777;font-size:11px;margin-top:2px}.aiAvatar{width:42px;height:42px;border-radius:13px;object-fit:cover}.aiSuggestion{display:block;width:100%;text-align:left;padding:12px;border:1px solid #e5e3ef;background:#faf9ff;border-radius:12px;margin:7px 0;cursor:pointer}.aiBioResult{padding:14px;background:#f8f6ff;border-radius:15px}.aiDay{padding:11px 0;border-bottom:1px solid #eee}.aiDay small{display:block;color:#777;margin-top:4px}.analyticsCards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.analyticsCards strong{display:block;font-size:30px;margin-top:8px}.analyticsList>div{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eee}.adminStatsGrid{grid-template-columns:repeat(4,1fr)}.adminVerifyRow{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:13px 0;border-bottom:1px solid #eee}.adminVerifyRow>div:first-child{display:flex;align-items:center;gap:10px}.adminVerifyRow small{display:block;color:#777;margin-top:3px}.adminVerifyAvatar{width:44px;height:44px;border-radius:14px;object-fit:cover}@media(max-width:800px){.twoColSafety,.aiGrid{grid-template-columns:1fr}.safetyRuleGrid{grid-template-columns:1fr 1fr}.analyticsCards{grid-template-columns:repeat(2,1fr)}.adminStatsGrid{grid-template-columns:repeat(2,1fr)}.adminVerifyRow{align-items:flex-start;flex-direction:column}}@media(max-width:520px){.safetyRuleGrid{grid-template-columns:1fr}.analyticsCards{grid-template-columns:1fr 1fr}.adminStatsGrid{grid-template-columns:1fr 1fr}}
+
+
+/* VibeMeet V11 — production mobile shell + Likes You paywall */
+.drawerBackdrop{display:none}
+.lockedLikeCard{overflow:hidden;border:1px solid #e8e1f4;background:linear-gradient(135deg,#fff,#faf7ff)}
+.lockedLikeVisual{min-height:190px;background:radial-gradient(circle at 30% 25%,rgba(118,87,245,.25),transparent 45%),linear-gradient(135deg,#24214d,#5b3f8f 58%,#d34f9c);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#fff;position:relative}
+.lockedLikeVisual:before{content:"";position:absolute;inset:18px;border:1px solid rgba(255,255,255,.18);border-radius:22px}
+.lockedLikeVisual .lockedHeart{font-size:54px;filter:none;position:relative;z-index:1;text-shadow:0 8px 30px rgba(0,0,0,.2)}
+.lockedLikeVisual span{position:relative;z-index:1;font-size:12px;font-weight:900;letter-spacing:.4px;background:rgba(255,255,255,.13);padding:8px 12px;border-radius:999px;backdrop-filter:blur(8px)}
+.matchesPage .matchGridPro{align-items:stretch}.matchGridPro .lockedLikeCard{min-height:100%}
+@media(max-width:900px){
+  body{overflow-x:hidden}
+  #app{min-height:100dvh}
+  #app>aside{position:fixed;left:0;top:0;bottom:0;width:min(86vw,360px);height:100dvh;transform:translateX(-105%);transition:transform .24s cubic-bezier(.2,.8,.2,1);z-index:1000;overflow-y:auto;overscroll-behavior:contain;padding:18px 14px 110px;-webkit-overflow-scrolling:touch}
+  #app>aside.open{left:0;transform:translateX(0)}
+  .drawerBackdrop{position:fixed;inset:0;background:rgba(10,10,25,.48);backdrop-filter:blur(2px);z-index:999}
+  .drawerBackdrop.open{display:block}
+  header{position:sticky;top:0;height:66px;padding:9px 10px;gap:8px;z-index:80}
+  #hamb{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;font-size:20px}
+  header input{min-width:0;width:auto;height:44px;padding:11px 13px;border-radius:14px;font-size:14px}
+  #me{display:none}
+  .notificationBtn{width:42px!important;height:42px!important;flex:0 0 42px!important}
+  .pagepad{padding:14px 12px calc(104px + env(safe-area-inset-bottom))}
+  .card{border-radius:19px;padding:16px;box-shadow:0 9px 26px rgba(29,32,62,.06)}
+  .grid,.groupGrid,.matchGridPro,.analyticsCards,.adminStatsGrid{grid-template-columns:1fr!important}
+  .twoColSafety,.aiGrid{grid-template-columns:1fr!important}
+  .actions{flex-wrap:wrap}.actions button{min-height:44px}
+  .title{margin:20px 0 14px}.title h2{font-size:25px}
+  .compactHero{padding:22px 18px;border-radius:22px}.compactHero h1{font-size:32px}.compactHero p{font-size:14px;line-height:1.5}
+  .heroBadge{min-width:84px;font-size:22px;padding:12px 14px}
+  .discoverHero{padding:22px!important;border-radius:24px!important}.discoverHero h1{font-size:38px!important;line-height:1.02}.discoverHero p{font-size:14px;line-height:1.55}.discoverHeroVisual{min-height:145px!important}.singleHeroMark{width:125px!important;height:125px!important;font-size:50px!important}.heroScore{right:0!important;bottom:-2px!important}.discoverHeroStats{gap:12px!important}.discoverHeroStats b{font-size:23px!important}.discoverHeroStats span{font-size:10px!important}
+  .discoverToolbar{margin-top:22px!important}.discoverFilters{width:100%;overflow-x:auto;padding-bottom:2px}.discoverFilters button{white-space:nowrap}
+  .featuredPhoto,.featuredImg{min-height:360px!important;height:360px!important}.featuredInfo{padding:17px!important}.singleDiscoverActions{grid-template-columns:repeat(3,1fr)!important;gap:8px!important}.singleDiscoverActions .swipeButton{min-height:70px!important}.keyboardHint{display:none}
+  .matchTabs{position:sticky;top:66px;z-index:20;background:rgba(247,248,252,.94);backdrop-filter:blur(12px);margin:0 -12px;padding:8px 12px;overflow-x:auto}.matchTab{white-space:nowrap}
+  .matchGridPro{gap:12px!important}.matchCardPro{display:grid!important;grid-template-columns:108px 1fr!important;border-radius:18px!important}.matchCardPro .matchPhoto{min-height:145px!important;height:100%!important}.matchCardPro .matchCardBody{padding:13px!important}.matchCardPro .actions{margin-top:10px}.matchCardPro .actions button{flex:1;min-width:100px}
+  .lockedLikeCard{grid-template-columns:1fr!important}.lockedLikeVisual{min-height:150px}.lockedLikeVisual .lockedHeart{font-size:44px}
+  .vipLikesUpsell{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:12px!important;padding:18px!important}
+  .safetyRuleGrid{grid-template-columns:1fr!important}.safetyContact,.safetyShare{align-items:flex-start!important;flex-direction:column!important}.safetyGrid{grid-template-columns:1fr!important}
+  .settingsSide{display:flex!important;overflow-x:auto!important;padding-bottom:4px}.settingsSide>*{flex:0 0 auto}
+  .chatPanel{border-radius:18px}.chatBody{min-height:50vh}.msg{max-width:88%}.chatComposer{padding:9px;position:sticky;bottom:0;z-index:10}
+  .vm-mobile-dock{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));padding:6px;border-radius:20px;box-shadow:0 14px 45px rgba(26,17,54,.2)}
+  .vm-mobile-dock button{min-height:50px;padding:5px 2px;font-size:9px}.vm-mobile-dock button span{font-size:18px}
+}
+@media(max-width:560px){
+  header input{font-size:13px}
+  .pagepad{padding-left:10px;padding-right:10px}
+  .discoverHero h1{font-size:34px!important}.discoverHeroStats{grid-template-columns:repeat(3,1fr)!important}.discoverHeroStats>div{min-width:0}.discoverHeroStats b{font-size:21px!important}.discoverHeroStats span{font-size:9px!important;line-height:1.15}
+  .featuredPhoto,.featuredImg{min-height:330px!important;height:330px!important}
+  .profileMetaLine{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important}.profileMetaLine span{font-size:11px}
+  .matchCardPro{grid-template-columns:92px 1fr!important}.matchCardPro .matchPhoto{min-height:125px!important}.matchCardPro .actions{display:grid!important;grid-template-columns:1fr 1fr!important}.matchCardPro .actions .primary{grid-column:1/-1}
+  .matchCardPro .actions button{width:100%;min-width:0}
+  .matchSectionTitle{padding-top:4px}
+  .matchCelebration{padding:12px!important}.matchCelebrateCard{width:min(94vw,430px)!important;padding:22px 15px!important;border-radius:25px!important}.matchCelebratePhoto{width:108px!important;height:108px!important;margin:14px auto!important}.matchCelebrateActions{display:grid!important;grid-template-columns:1fr!important}.matchCelebrateActions button{width:100%;min-width:0!important}
+}

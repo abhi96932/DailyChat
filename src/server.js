@@ -51,9 +51,11 @@ const featurePurchasesReady = q(`
     order_id TEXT UNIQUE,
     payment_id TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    used_at TIMESTAMP
+    used_at TIMESTAMP,
+    reveal_swipe_id BIGINT
   )
-`);
+`)
+const featureRevealColumnReady = q(`ALTER TABLE feature_purchases ADD COLUMN IF NOT EXISTS reveal_swipe_id BIGINT`);
 
 const webhookEventsReady=q(`CREATE TABLE IF NOT EXISTS webhook_events (event_id VARCHAR(160) PRIMARY KEY,received_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 const superLikesReady = q(`
@@ -495,28 +497,26 @@ app.get("/api/likes",auth,async(req,res)=>{
 
   const incomingRows = incoming.rows.filter(x => !x.matched);
 
-  const revealedLikes = await q(
-    `SELECT COUNT(*)::int AS count
+  await featureRevealColumnReady;
+  const revealed = await q(
+    `SELECT reveal_swipe_id
      FROM feature_purchases
-     WHERE user_id=$1
-       AND product='extra_like'
-       AND status='paid'
-       AND used_at IS NOT NULL`,
+     WHERE user_id=$1 AND product='extra_like' AND status IN ('paid','used') AND reveal_swipe_id IS NOT NULL`,
     [req.user.id]
   );
-
-  const paidExtraLikes = revealedLikes.rows[0]?.count || 0;
-
-  // Free users can see that they have Likes You, but the identity/profile stays locked.
-  // Each paid extra_like reveal unlocks exactly one incoming like; VibeMeet+ unlocks all.
-  const visibleCount = vipActive
-    ? incomingRows.length
-    : Math.min(incomingRows.length, paidExtraLikes);
+  const revealedIds = new Set(revealed.rows.map(x=>Number(x.reveal_swipe_id)));
+  const visible = vipActive ? incomingRows : incomingRows.filter(x=>revealedIds.has(Number(x.swipe_id)));
+  const locked = vipActive ? [] : incomingRows.filter(x=>!revealedIds.has(Number(x.swipe_id))).map(x=>({
+    swipe_id:Number(x.swipe_id),
+    liked_at:x.liked_at,
+    super_liked:!!x.super_liked
+  }));
 
   res.json({
-    incoming: incomingRows.slice(0, visibleCount),
+    incoming: visible,
     incomingCount: incomingRows.length,
-    lockedCount: Math.max(0, incomingRows.length - visibleCount),
+    lockedCount: locked.length,
+    locked,
     outgoing: outgoing.rows.filter(x => !x.matched),
     vipActive
   });
@@ -611,6 +611,7 @@ const FEATURE_PRICES = {
 };
 
 async function createFeatureOrder(req, res, product) {
+  await featurePurchasesReady; await featureRevealColumnReady;
   try {
     if (!razorpay) {
       return res.status(503).json({ error: "Payments not configured" });
@@ -628,11 +629,27 @@ async function createFeatureOrder(req, res, product) {
       receipt: `${product}_${req.user.id}_${Date.now()}`
     });
 
+    let revealSwipeId = null;
+    if (product === 'extra_like') {
+      const requested = Number(req.body?.revealSwipeId);
+      if (!Number.isInteger(requested)) return res.status(400).json({error:'Choose a Like You profile to reveal.'});
+      const target = await q(`
+        SELECT s.id
+        FROM swipes s
+        JOIN users u ON u.id=s.swiper_id
+        WHERE s.id=$1 AND s.target_id=$2 AND s.direction='like'
+          AND u.status<>'banned'
+          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$2))
+          AND NOT EXISTS (SELECT 1 FROM matches m WHERE (m.user1_id=$2 AND m.user2_id=u.id) OR (m.user1_id=u.id AND m.user2_id=$2))
+      `,[requested,req.user.id]);
+      if (!target.rowCount) return res.status(404).json({error:'That Like You profile is no longer available.'});
+      revealSwipeId=requested;
+    }
     await q(
       `INSERT INTO feature_purchases
-       (user_id, product, amount_paise, status, order_id)
-       VALUES ($1,$2,$3,'created',$4)`,
-      [req.user.id, product, price * 100, order.id]
+       (user_id, product, amount_paise, status, order_id, reveal_swipe_id)
+       VALUES ($1,$2,$3,'created',$4,$5)`,
+      [req.user.id, product, price * 100, order.id, revealSwipeId]
     );
 
     res.json({
@@ -719,27 +736,38 @@ app.post("/api/features/verify", auth, async (req, res) => {
 
 app.post("/api/features/use", auth, async (req, res) => {
   try {
-    const { product } = req.body;
+    const { product, revealSwipeId } = req.body;
 
     if (product !== "extra_like") {
       return res.status(400).json({ error: "Invalid feature" });
     }
+    const swipeId = Number(revealSwipeId);
+    if (!Number.isInteger(swipeId)) return res.status(400).json({error:'Choose a Like You profile to reveal.'});
+    await featureRevealColumnReady;
+
+    const valid = await q(`
+      SELECT s.id
+      FROM swipes s
+      JOIN users u ON u.id=s.swiper_id
+      WHERE s.id=$1 AND s.target_id=$2 AND s.direction='like'
+        AND u.status<>'banned'
+        AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$2))
+        AND NOT EXISTS (SELECT 1 FROM matches m WHERE (m.user1_id=$2 AND m.user2_id=u.id) OR (m.user1_id=u.id AND m.user2_id=$2))
+    `,[swipeId,req.user.id]);
+    if(!valid.rowCount)return res.status(404).json({error:'That Like You profile is no longer available.'});
 
     const used = await q(
       `UPDATE feature_purchases
-       SET used_at = NOW()
+       SET used_at = NOW(), reveal_swipe_id = COALESCE(reveal_swipe_id,$2)
        WHERE id = (
-         SELECT id
-         FROM feature_purchases
-         WHERE user_id = $1
-           AND product = 'extra_like'
-           AND status = 'paid'
-           AND used_at IS NULL
-         ORDER BY created_at ASC
+         SELECT id FROM feature_purchases
+         WHERE user_id=$1 AND product='extra_like' AND status='paid' AND used_at IS NULL
+           AND (reveal_swipe_id=$2 OR reveal_swipe_id IS NULL)
+         ORDER BY CASE WHEN reveal_swipe_id=$2 THEN 0 ELSE 1 END, created_at ASC
          LIMIT 1
        )
-       RETURNING id`,
-      [req.user.id]
+       RETURNING id,reveal_swipe_id`,
+      [req.user.id,swipeId]
     );
 
     if (!used.rowCount) {
@@ -1166,5 +1194,5 @@ const communityTravelReady=(async()=>{
 app.use((req,res,next)=>{if(req.path.startsWith('/api/'))return res.status(404).json({error:'API route not found'});next()});
 app.use((err,req,res,next)=>{console.error('Unhandled request error:',err);if(res.headersSent)return next(err);res.status(err.status||500).json({error:process.env.NODE_ENV==='production'?'Something went wrong.':(err.message||'Internal server error')});});
 const PORT=process.env.PORT||3000;
-Promise.all([communityTravelReady,moderationReady,securityEventsReady,profilePhotosReady,messagingFeaturesReady,premiumFeaturesReady,roadmapReady,webhookEventsReady,subscriptionsReady,featurePurchasesReady,superLikesReady,boostsReady]).then(()=>server.listen(PORT,()=>console.log(`VibeMeet running on port ${PORT}`))).catch(()=>process.exit(1));process.on('SIGTERM',async()=>{await pool.end();process.exit(0)});setInterval(async()=>{try{const r=await q(`SELECT er.event_id,er.user_id,er.remind_minutes,e.title,e.starts_at FROM event_reminders er JOIN events e ON e.id=er.event_id WHERE e.starts_at>NOW() AND e.starts_at-NOW()<=make_interval(mins=>er.remind_minutes) AND e.starts_at-NOW()>make_interval(mins=>er.remind_minutes-2)`);for(const x of r.rows){const exists=await q(`SELECT 1 FROM notifications WHERE user_id=$1 AND type='event_reminder' AND body LIKE $2 AND created_at>NOW()-INTERVAL '2 hours'`,[x.user_id,`%${x.event_id}%`]);if(!exists.rowCount)await createNotification(x.user_id,null,'event_reminder','⏰ Event reminder',`Event ${x.event_id}: ${x.title} starts ${new Date(x.starts_at).toLocaleString()}`)}}catch{}} ,60_000);
+Promise.all([communityTravelReady,moderationReady,securityEventsReady,profilePhotosReady,messagingFeaturesReady,premiumFeaturesReady,roadmapReady,webhookEventsReady,subscriptionsReady,featurePurchasesReady,featureRevealColumnReady,superLikesReady,boostsReady]).then(()=>server.listen(PORT,()=>console.log(`VibeMeet running on port ${PORT}`))).catch(()=>process.exit(1));process.on('SIGTERM',async()=>{await pool.end();process.exit(0)});setInterval(async()=>{try{const r=await q(`SELECT er.event_id,er.user_id,er.remind_minutes,e.title,e.starts_at FROM event_reminders er JOIN events e ON e.id=er.event_id WHERE e.starts_at>NOW() AND e.starts_at-NOW()<=make_interval(mins=>er.remind_minutes) AND e.starts_at-NOW()>make_interval(mins=>er.remind_minutes-2)`);for(const x of r.rows){const exists=await q(`SELECT 1 FROM notifications WHERE user_id=$1 AND type='event_reminder' AND body LIKE $2 AND created_at>NOW()-INTERVAL '2 hours'`,[x.user_id,`%${x.event_id}%`]);if(!exists.rowCount)await createNotification(x.user_id,null,'event_reminder','⏰ Event reminder',`Event ${x.event_id}: ${x.title} starts ${new Date(x.starts_at).toLocaleString()}`)}}catch{}} ,60_000);
 
