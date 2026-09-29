@@ -1305,13 +1305,48 @@ async function saveAnswers(){const answers=Object.entries(answerDraft).map(([que
 
 async function fileToAvatarData(file){
   if(!file)throw Error('Choose a photo first');
-  if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw Error('Please choose a JPG, PNG or WebP image.');
+  const type=String(file.type||'').toLowerCase();
+  if(!/^image\/(jpeg|jpg|png|webp)$/.test(type))throw Error('Please choose a JPG, PNG or WebP image.');
+
+  // Mobile browsers can be inconsistent with object URLs/canvas modals after
+  // returning from the native gallery. Use a direct, lightweight compressor
+  // on phones so the selected image immediately becomes a usable profile photo.
+  const mobile=window.matchMedia?.('(max-width: 900px)')?.matches;
+  if(mobile)return await compressAvatarForMobile(file);
+
   return await new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(file),img=new Image();
     img.onload=()=>{URL.revokeObjectURL(url);openPhotoEditor(img,resolve,reject)};
     img.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Could not read this image.'))};
     img.src=url;
   });
+}
+
+async function compressAvatarForMobile(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((resolve,reject)=>{
+      const im=new Image();
+      im.onload=()=>resolve(im);
+      im.onerror=()=>reject(Error('Could not read this image. Try a JPG or PNG photo.'));
+      im.src=url;
+    });
+    if(!img.naturalWidth||!img.naturalHeight)throw Error('This photo could not be loaded.');
+    const maxSide=1000;
+    const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+    canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw Error('Photo processing is not supported on this browser.');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    for(const quality of [.86,.80,.74,.68,.62,.56]){
+      const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality));
+      if(blob&&blob.size<=1.9*1024*1024)return await blobToDataUrl(blob);
+    }
+    throw Error('This photo is too large. Please choose another image.');
+  }finally{URL.revokeObjectURL(url)}
 }
 function openPhotoEditor(img,resolve,reject){
   document.getElementById('photoEditorModal')?.remove();
