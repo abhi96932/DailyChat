@@ -28,3 +28,17 @@ test("Mobile drawer has backdrop and scroll-safe shell",()=>{
   assert.match(css,/drawerBackdrop/);
   assert.match(css,/overscroll-behavior:contain/);
 });
+
+
+test('V10 professional match and safety UI replaces browser dialogs', () => {
+  assert.match(app, /function toast\(x,kind='info'\)/);
+  assert.match(app, /function showMatchCelebration\(x\)/);
+  assert.match(app, /className='matchCelebration'/);
+  assert.match(app, /function vibeSafetyActionModal\(person\)/);
+  assert.match(app, /function vibeReportModal\(person\)/);
+  assert.match(app, /function renderSafety\(\)/);
+  assert.match(app, /safetyHeroPro/);
+  assert.match(app, /matchCelebrateActions/);
+  assert.doesNotMatch(app, /function toast\(x\)\{alert\(x\)\}/);
+  assert.doesNotMatch(app, /async function openChatSafety\(\)\{if\(!activePerson\)return;const choice=prompt/);
+});
