@@ -544,3 +544,54 @@ header input::placeholder{color:#9894a7}
     padding-right: 13px;
   }
 }
+
+
+/* =========================================================
+   VibeMeet Production Polish — unified visual system
+   ========================================================= */
+:root{
+  --vm-ink:#171b2e;
+  --vm-muted:#737b90;
+  --vm-line:#e7e8f1;
+  --vm-surface:rgba(255,255,255,.94);
+  --vm-soft:#f4f3fb;
+  --vm-brand:#7657f5;
+  --vm-brand-2:#ee4f9b;
+  --vm-radius:24px;
+}
+body{background:linear-gradient(180deg,#f8f8fc 0%,#f5f6fb 100%);color:var(--vm-ink)}
+button,input,select,textarea{outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(118,87,245,.25);outline-offset:2px}
+#app>main{background:transparent}
+.pagepad{max-width:1400px;margin:0 auto}
+.card,.settingsCard,.safetyCardPro,.postCard,.matchCardPro,.chatPanel,.tripCard,.eventCard,.groupCard{
+  border-color:var(--vm-line);
+}
+.sectionHero,.discoverHero,.settingsHero,.safetyHeroPro,.vipHeroPro,.feedHero{
+  box-shadow:0 20px 60px rgba(39,31,82,.08);
+}
+.primary,.btn,.vm-primary,.vm-login{
+  transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.primary:hover,.btn:hover,.vm-primary:hover,.vm-login:hover{transform:translateY(-1px);filter:saturate(1.04)}
+.secondary,.settingsAction,.filterPill,.matchTab{
+  transition:transform .18s ease,background .18s ease,border-color .18s ease;
+}
+.secondary:hover,.settingsAction:hover{transform:translateY(-1px);border-color:#d9d4ed}
+.vm-landing-footer{
+  max-width:1180px;margin:-25px auto 0;padding:0 24px 28px;display:flex;justify-content:center;gap:18px;align-items:center;color:#74758a;font-size:13px;
+}
+.vm-landing-footer button{background:none;color:#6656bd;font-weight:800;padding:5px}
+.legalHero{display:flex;justify-content:space-between;align-items:center;gap:20px}
+.legalCard{max-width:980px;margin:18px auto 40px;padding:30px 34px;line-height:1.7}
+.legalCard h2{margin:28px 0 8px;font-size:20px}
+.legalCard h2:first-child{margin-top:0}
+.legalCard p{color:#5f667b;margin:0 0 16px}
+.legalLinkGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.legalLinkGrid .settingsAction{text-align:left}
+@media(max-width:760px){
+  .vm-landing-footer{margin:0;padding:12px 18px 28px;flex-wrap:wrap}
+  .legalHero{align-items:flex-start;flex-direction:column}
+  .legalCard{padding:22px 18px;border-radius:20px}
+  .legalLinkGrid{grid-template-columns:1fr}
+}

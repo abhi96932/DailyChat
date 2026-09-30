@@ -28,3 +28,20 @@ test("Mobile drawer has backdrop and scroll-safe shell",()=>{
   assert.match(css,/drawerBackdrop/);
   assert.match(css,/overscroll-behavior:contain/);
 });
+
+test("production polish, auth labeling and legal pages are wired",()=>{
+  assert.match(index,/id="authSubmitBtn"/);
+  assert.match(app,/submit\.textContent=registering\?'Create account':'Login'/);
+  assert.match(app,/Meet people who share your interests, energy and plans/);
+  assert.match(app,/renderLegal\('terms'\)/);
+  assert.match(app,/renderLegal\('privacy'\)/);
+  assert.match(app,/renderLegal\('refund'\)/);
+  assert.match(index,/authSubmitBtn/);
+  assert.match(server,/backupDirConfigured/);
+});
+test("backup script performs post-dump verification when pg_restore is available",()=>{
+  const backup=fs.readFileSync(new URL("../scripts/backup-db.mjs",import.meta.url),"utf8");
+  assert.match(backup,/pg_dump/);
+  assert.match(backup,/pg_restore/);
+  assert.match(backup,/Backup verified/);
+});
