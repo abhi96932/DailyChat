@@ -45,3 +45,14 @@ test("backup script performs post-dump verification when pg_restore is available
   assert.match(backup,/pg_restore/);
   assert.match(backup,/Backup verified/);
 });
+
+test("flexible event foundation and community APIs are wired",()=>{
+  for(const x of ["/api/events","/api/events/:id","/api/events/:id/join","/api/events/:id/leave","/api/events/:id/invite","/api/events/:id/announcements","/api/events/:id/chat","/api/events/:id/attendance","/api/events/:id/report","/api/events/:id/analytics","/api/admin/event-reports","/api/admin/event-reports/:id/action","/api/groups/:id/events"]) assert.ok(server.includes(x),x);
+  assert.match(schema,/event_announcements/);assert.match(schema,/event_messages/);assert.match(schema,/event_invites/);assert.match(schema,/event_reports/);assert.match(schema,/event_attendance/);
+});
+test("event UX supports online offline hybrid and invite visibility",()=>{
+  assert.match(app,/Online, offline or hybrid/);assert.match(app,/invite_only/);assert.match(app,/Show QR code/);assert.match(app,/External event link/);assert.match(app,/Create an experience/);
+});
+test("community UX connects communities to events",()=>{
+  assert.match(app,/Find your people\. Build something together/);assert.match(app,/Community members/);assert.match(app,/COMMUNITY EVENTS|Community events/);assert.match(app,/createEventWizard/);
+});

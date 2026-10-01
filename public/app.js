@@ -628,675 +628,233 @@ function publicGalleryGo(i){publicPhotoIndex=i;viewProfile(activePerson.id,true)
 
 if(!$('matchCelebrationStyles')){const st=document.createElement('style');st.id='matchCelebrationStyles';st.textContent=`.matchCelebration{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,18,35,.72);backdrop-filter:blur(12px);opacity:0;transition:opacity .2s ease}.matchCelebration.show{opacity:1}.matchCelebrateCard{position:relative;width:min(460px,94vw);padding:30px 24px;border-radius:30px;background:linear-gradient(145deg,#fff,#f8f5ff);text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.35);transform:translateY(16px) scale(.97);transition:transform .25s ease}.matchCelebration.show .matchCelebrateCard{transform:translateY(0) scale(1)}.matchCelebrateClose{position:absolute;right:14px;top:14px;width:38px;height:38px;border:0;border-radius:50%;background:#eeeaf7;font-size:25px;cursor:pointer}.matchConfetti{font-size:20px;letter-spacing:7px;margin:0 0 4px;animation:matchFloat 1.8s ease-in-out infinite}.matchSpark{width:78px;height:78px;margin:2px auto 10px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:42px;background:linear-gradient(135deg,#eef7ff,#f8eaff);box-shadow:0 12px 30px rgba(91,77,230,.14);animation:matchPop .55s cubic-bezier(.2,.9,.2,1.2)}.matchCelebrateCard h2{font-size:30px;line-height:1.12;margin:8px 0}.matchCelebratePill{display:inline-flex;align-items:center;justify-content:center;padding:8px 13px;border-radius:999px;background:#f3efff;color:#5b4de6;font-size:12px;font-weight:800;margin:2px 0 6px}.matchCelebrateCard{overflow:hidden}.matchCelebrateCard:before{content:"";position:absolute;width:180px;height:180px;border-radius:50%;background:rgba(91,77,230,.08);top:-90px;left:-90px}.matchCelebrateCard:after{content:"";position:absolute;width:160px;height:160px;border-radius:50%;background:rgba(236,72,153,.08);right:-80px;bottom:-80px}@keyframes matchPop{0%{transform:scale(.65) rotate(-8deg);opacity:.2}70%{transform:scale(1.08) rotate(3deg)}100%{transform:scale(1) rotate(0);opacity:1}}@keyframes matchFloat{50%{transform:translateY(-5px)}}.matchCelebratePhoto{width:150px;height:150px;margin:18px auto;border-radius:50%;overflow:hidden;background:#eeeaf7;border:6px solid #fff;box-shadow:0 15px 40px rgba(91,77,230,.18)}.matchCelebrateImg{width:100%;height:100%;object-fit:cover;display:block}.matchCelebrateActions{justify-content:center}.matchCelebrateActions button{min-width:150px}@media(max-width:520px){.matchCelebrateCard{padding:26px 18px}.matchCelebrateCard h2{font-size:25px}.matchCelebratePhoto{width:125px;height:125px}}`;document.head.appendChild(st)}
 if(!$('matchProStyles')){const st=document.createElement('style');st.id='matchProStyles';st.textContent=`.matchesPage .matche.matchTab{border:0;background:transparent;padding:11px 15px;border-radius:13px;font-weight:800;color:#666;cursor:pointer}sHero{margin-bottom:18px}.matchTabs{display:flex;gap:8px;flex-wrap:wrap;padding:7px;background:rgba(255,255,255,.82);border:1px solid #eceaf3;border-radius:18px;box-shadow:0 10px 30px rgba(60,45,100,.06);position:sticky;top:10px;z-index:5}.matchTab span{display:inline-flex;min-width:23px;height:23px;align-items:center;justify-content:center;margin-left:7px;border-radius:999px;background:#eeeaf7;font-size:11px}.matchTab.active{background:linear-gradient(135deg,#5b4de6,#d946ef);color:#fff;box-shadow:0 8px 22px rgba(91,77,230,.2)}.matchTab.active span{background:rgba(255,255,255,.2);color:#fff}.matchSectionTitle{margin:24px 0 14px}.matchGridPro{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.matchCardPro{display:grid;grid-template-columns:150px 1fr;min-height:190px;overflow:hidden;border:1px solid #eceaf3;border-radius:22px;background:#fff;box-shadow:0 14px 40px rgba(48,35,80,.07)}.matchPhoto{position:relative;min-height:190px;background:#f1eff8;overflow:hidden}.matchPhotoImg{width:100%;height:100%;min-height:190px;object-fit:cover;display:block}.matchBadge{position:absolute;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.92);font-size:11px;font-weight:900;color:#5b21b6}.matchBadge.newLike{color:#be185d}.matchBadge.sentLike{color:#1d4ed8}.matchCardBody{padding:18px;display:flex;flex-direction:column;justify-content:center}.matchName h3{margin:0 0 4px}.matchName span{font-size:12px;color:#777}.matchSub{font-size:13px;color:#666;margin:10px 0 16px}.matchCardBody .actions{margin-top:auto}.matchEmpty{grid-column:1/-1;text-align:center;padding:44px 20px}.emptyEmoji{font-size:42px;margin-bottom:8px}.proConfirmOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,18,35,.58);backdrop-filter:blur(9px);animation:proConfirmFade .18s ease}.proConfirmCard{width:min(470px,100%);background:rgba(255,255,255,.98);border:1px solid rgba(255,255,255,.8);border-radius:28px;padding:26px;box-shadow:0 30px 90px rgba(20,15,50,.28);position:relative;animation:proConfirmUp .2s ease}.proConfirmClose{position:absolute;right:15px;top:12px;border:0;background:#f3f2f7;width:34px;height:34px;border-radius:50%;font-size:24px;line-height:1;cursor:pointer;color:#555}.proConfirmIcon{width:58px;height:58px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ffe4ee,#eee8ff);font-size:28px;margin-bottom:17px}.proConfirmPerson{display:flex;align-items:center;gap:14px;padding-right:35px}.proConfirmAvatar{width:58px;height:58px;border-radius:18px;object-fit:cover;display:block;background:#f0eef8}.proConfirmFallback{display:flex;align-items:center;justify-content:center;font-size:25px}.proConfirmEyebrow{font-size:10px;font-weight:900;letter-spacing:.14em;color:#7c3aed;margin-bottom:4px}.proConfirmCard h3{margin:0;font-size:23px;letter-spacing:-.02em}.proConfirmName{font-size:13px;color:#666;margin-top:3px;font-weight:700}.proConfirmMessage{font-size:14px;line-height:1.6;color:#555;margin:19px 0 11px}.proConfirmNote{font-size:11px;color:#888;background:#f8f7fb;border-radius:12px;padding:9px 11px}.proConfirmActions{display:flex;gap:10px;margin-top:20px}.proConfirmActions button{flex:1;min-height:46px}.proConfirmActions .danger{background:linear-gradient(135deg,#ef476f,#d7265f);color:#fff;border:0;border-radius:14px;font-weight:900;cursor:pointer}.proConfirmActions .danger:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(215,38,95,.2)}@keyframes proConfirmFade{from{opacity:0}to{opacity:1}}@keyframes proConfirmUp{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:520px){.proConfirmCard{padding:22px;border-radius:23px}.proConfirmActions{flex-direction:column-reverse}.proConfirmActions button{width:100%}}@media(max-width:800px){.matchGridPro{grid-template-columns:1fr}.matchCardPro{grid-template-columns:120px 1fr}.matchPhoto,.matchPhotoImg{min-height:175px}}@media(max-width:520px){.matchCardPro{grid-template-columns:1fr}.matchPhoto{height:230px}.matchPhotoImg{height:230px}.matchTabs{position:static}.matchTab{flex:1;min-width:100px}}`;document.head.appendChild(st)}
-async function renderGroups(){groups=await api('/api/groups');const cats=[...new Set(groups.map(g=>g.category).filter(Boolean))];page.innerHTML=`<div class="pagepad vibePage"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR CIRCLES ✨</div><h1>Find your people.</h1><p>Study buddies, travel crews, hobby friends and people you actually vibe with.</p></div></div><div class="filterRow"><button class="filterPill active">✨ For you</button>${cats.slice(0,5).map(c=>`<button class="filterPill">${esc(c)}</button>`).join('')}</div><div class="title">
-  <div>
-    <h2>Trending communities</h2>
-    <p class="muted">Join a circle first. Then discover people inside it.</p>
-  </div>
-  <button class="primary" onclick="createCommunity()">＋ Create community</button>
-</div><div class="groupGrid">${groups.map((g,i)=>`<article class="groupCardNew"><div class="groupCover"><span class="groupIcon">${g.icon||'✨'}</span><span class="groupLive">● ${g.members} vibes</span></div><div class="groupContent"><span class="miniTag">${esc(g.category||'Community')}</span><h3>${esc(g.name)}</h3><p>${esc(g.description)}</p><div class="groupMeta"><span>👥 ${g.members} members</span><span>${g.joined?'✓ Joined':'Open to join'}</span></div><div class="actions">${g.joined?`<button class="primary" onclick="openGroup(${i})">Open circle →</button><button class="iconBtn" title="Leave" onclick="leaveGroup(${g.id})">↪</button>`:`<button class="primary" onclick="joinGroup(${g.id})">Join circle ✨</button>`}</div></div></article>`).join('')||'<div class="emptyState"><div>🌱</div><h3>Your next circle is waiting.</h3><p class="muted">Complete your profile to unlock better community recommendations.</p></div>'}</div></div>`}
-async function joinGroup(id){try{await api(`/api/groups/${id}/join`,{method:'POST'});render('groups')}catch(e){toast(e.message)}}async function leaveGroup(id){try{await api(`/api/groups/${id}/leave`,{method:'POST'});render('groups')}catch(e){toast(e.message)}}
-async function openGroup(i){activeGroup=groups[i];socket?.emit('group:join',activeGroup.id);const members=await api(`/api/groups/${activeGroup.id}/members`);const msgs=await api(`/api/groups/${activeGroup.id}/messages`);page.innerHTML=`<div class="pagepad vibePage"><button class="backBtn" onclick="render('groups')">← All circles</button><div class="groupDetailHero"><div><div class="eyebrow">${esc(activeGroup.category||'COMMUNITY')}</div><h1>${activeGroup.icon||'✨'} ${esc(activeGroup.name)}</h1><p>${esc(activeGroup.description)}</p><div class="heroTags"><span>👥 ${members.length} active</span><span>💬 Community chat</span><span>💞 Dating inside</span></div></div><button class="glassBtn" onclick="render('events')">📅 Group events</button></div><div class="groupWorkspace"><section class="chatPanel communityChat"><div class="chatHead"><div><b>${esc(activeGroup.name)}</b><small> · ${members.length} members</small></div><span class="onlineDot">● live</span></div><div class="welcomePost"><div class="welcomeEmoji">👋</div><div><b>Welcome to the circle!</b><p>Introduce yourself, share what you’re working on, or start a conversation.</p><div class="starterChips"><button onclick="$('body').value='Hey everyone 👋 What are you all working on?'">👋 Introduce yourself</button><button onclick="$('body').value='Anyone up for a meetup this week?'">📍 Plan a meetup</button><button onclick="$('body').value='Looking for study/project buddies 🚀'">🚀 Find buddies</button></div></div></div><div class="chatBody" id="msgs">${msgs.map(msgHtml).join('')||'<div class="emptyChat"><div>💭</div><b>No messages yet</b><span>Be the first to start the vibe.</span></div>'}</div><form id="composer" class="chatComposer"><input id="body" placeholder="Drop a message…"><button class="sendBtn">➤</button></form></section><aside class="groupSide"><div class="sideCard"><div class="sideTitle"><span>People in this circle</span><b>${members.length}</b></div><div class="memberStack">${members.slice(0,7).map(m=>`<div class="memberRow"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.age||'—'} · ${esc(m.course||m.mode||'Member')}</small></div><span class="memberOnline">●</span></div>`).join('')}</div><button class="secondary full" onclick="discoverFromGroup(${activeGroup.id})">💞 Find group matches</button></div><div class="sideCard vibeTip"><span>💡 Vibe tip</span><h3>Shared interests = easier first messages.</h3><p>Ask about a project, trip, playlist or event instead of just saying “hi”.</p></div></aside></div></div>`;bindComposer(body=>socket.emit('group:message',{groupId:activeGroup.id,body}))}
-async function discoverFromGroup(id){try{const list=await api(`/api/discover?groupId=${encodeURIComponent(id)}`);discover=list;page.innerHTML=`<div class="pagepad"><button class="backBtn" onclick="render('groups')">← Back to circles</button><div class="title"><div><div class="eyebrow">GROUP → DATING</div><h2>People you may vibe with</h2><p class="muted">Compatibility inside this community.</p></div></div><div class="grid">${list.map((x,i)=>personCard(x,i)).join('')||'<div class="card"><h3>No group matches yet</h3><p class="muted">Complete your profile and compatibility answers.</p></div>'}</div></div>`}catch(e){toast(e.message)}}
 
-async function setEventReminder(id){try{await api(`/api/events/${id}/reminder`,{method:'POST',body:{minutes:60}});toast('⏰ Reminder set for 1 hour before the event')}catch(e){toast(e.message)}}
-async function renderEvents(){events=await api('/api/events');page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">MEET IRL ✨</div><h1>Events & Hangouts</h1><p>Join something fun, meet your community and turn online vibes into real memories.</p></div><div class="heroBadge">${events.length}<span>events</span></div></div><div class="title"><div><h2>Upcoming events</h2><p class="muted">Community events from your VibeMeet circles.</p></div><button class="primary" onclick="createCommunityEvent()">＋ Create event</button></div><div class="grid">${events.map(e=>`<div class="card event"><div class="eventDate">${e.starts_at?new Date(e.starts_at).toLocaleString():''}</div><h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'Community hangout')}</p><p>📍 ${esc(e.location||'Online')} · 👥 ${e.attendees||0} joined</p><span class="chip">${e.joined?'✓ Joined':'Open'}</span>${e.joined?`<button class="secondary full" onclick="setEventReminder(${e.id})">⏰ Remind me</button>`:'<button class="primary full" onclick="joinEvent('+e.id+')">Join event</button>'}</div>`).join('')||'<div class="card"><h3>No upcoming events</h3><p class="muted">Create the first vibe in your community.</p></div>'}</div></div>`}
-async function joinEvent(id){try{await api(`/api/events/${id}/join`,{method:'POST'});toast('🎉 You joined the event');render('events')}catch(e){toast(e.message)}}
-async function createCommunity(){
+async function renderGroups(){
+  groups=await api('/api/groups');
+  const cats=[...new Set(groups.map(g=>g.category).filter(Boolean))];
+  page.innerHTML=`<div class="pagepad communityHub">
+    <section class="communityHero">
+      <div><div class="eyebrow">VIBEMEET COMMUNITIES ✨</div><h1>Find your people. Build something together.</h1>
+      <p>Join communities around interests, cities and goals — then turn those connections into real events and experiences.</p></div>
+      <button class="primary" onclick="createCommunity()">＋ Create community</button>
+    </section>
+    <div class="communityTools"><input id="communitySearch" class="communitySearch" placeholder="Search communities, topics or cities…">
+      <div class="filterRow"><button class="filterPill active" onclick="filterCommunities('')">All</button>${cats.slice(0,8).map(c=>`<button class="filterPill" onclick="filterCommunities('${esc(c)}')">${esc(c)}</button>`).join('')}</div>
+    </div>
+    <div id="communityGrid" class="groupGrid">${communityCards(groups)}</div>
+  </div>`;
+  $('communitySearch').oninput=()=>filterCommunities($('communitySearch').value);
+}
+function communityCards(list){
+  return list.map((g,i)=>`<article class="groupCardNew communityCardPro">
+    <div class="groupCover" style="${g.cover_image?`background-image:linear-gradient(180deg,#0000,#0009),url('${esc(g.cover_image)}');background-size:cover;background-position:center;`:''}">
+      <span class="groupIcon">${g.icon||'👥'}</span><span class="groupLive">● ${g.members||0} members</span>
+    </div>
+    <div class="groupContent"><span class="miniTag">${esc(g.category||'Community')}</span><h3>${esc(g.name)}</h3>
+    <p>${esc(g.description||'A space to meet, share and build together.')}</p>
+    <div class="groupMeta"><span>👥 ${g.members||0}</span><span>📅 ${g.events_count||0} events</span><span>${g.visibility==='private'?'🔒 Private':'🌎 Public'}</span></div>
+    <div class="actions">${g.joined?`<button class="primary" onclick="openGroupById(${g.id})">Open community →</button><button class="iconBtn" onclick="leaveGroup(${g.id})">Leave</button>`:`<button class="primary" onclick="joinGroup(${g.id})">Join community ✨</button>`}</div></div>
+  </article>`).join('')||`<div class="card emptyState"><div>🌱</div><h3>No communities found</h3><p class="muted">Try another search or create the first one.</p></div>`;
+}
+function filterCommunities(query){
+  const q=String(query||'').toLowerCase().trim();
+  const list=groups.filter(g=>!q||[g.name,g.description,g.category,g.city].some(v=>String(v||'').toLowerCase().includes(q)));
+  $('communityGrid').innerHTML=communityCards(list);
+}
+async function joinGroup(id){try{await api(`/api/groups/${id}/join`,{method:'POST'});toast('🎉 Welcome to the community');render('groups')}catch(e){toast(e.message)}}
+async function leaveGroup(id){try{await api(`/api/groups/${id}/leave`,{method:'POST'});render('groups')}catch(e){toast(e.message)}}
+async function openGroup(i){if(typeof i==='number'&&groups[i])return openGroupById(groups[i].id);return openGroupById(i)}
+async function openGroupById(id){
   try{
-    const name = prompt("Community name");
-    if(!name || !name.trim()) return;
-
-    const description = prompt("Community description") || "";
-
-    // Try to create using an already-paid ₹29 purchase first
-    try{
-      await api("/api/groups",{
-        method:"POST",
-        body:{
-          name:name.trim(),
-          description:description.trim()
-        }
-      });
-
-      toast("🎉 Community created successfully!");
-      render("groups");
-      return;
-    }catch(e){
-      // No unused payment → continue to payment
-      if(!String(e.message || "").includes("₹29")){
-        throw e;
-      }
-    }
-
-    // No paid purchase available → open ₹29 payment
-    const o = await api("/api/features/order",{
-      method:"POST",
-      body:{product:"community_create"}
-    });
-
-    await loadRazorpay();
-
-    const checkout = new Razorpay({
-      key:o.keyId,
-      amount:o.amount,
-      currency:"INR",
-      name:"VibeMeet",
-      description:"VibeMeet Community Creation · ₹29",
-      order_id:o.orderId,
-      prefill:{
-        name:user?.name || "",
-        email:user?.email || ""
-      },
-      theme:{color:"#6b4ce6"},
-      modal:{
-        ondismiss:()=>toast("Payment cancelled")
-      },
-      handler:async r=>{
-        console.log("RAZORPAY RESPONSE:", r);
-
-        try{
-          await api("/api/features/verify",{
-            method:"POST",
-            body:{
-              orderId:r.razorpay_order_id,
-              paymentId:r.razorpay_payment_id,
-              signature:r.razorpay_signature
-            }
-          });
-
-          await api("/api/groups",{
-            method:"POST",
-            body:{
-              name:name.trim(),
-              description:description.trim()
-            }
-          });
-
-          toast("🎉 Community created successfully!");
-          render("groups");
-        }catch(e){
-          toast(e.message);
-        }
-      }
-    });
-
-    checkout.open();
-
-  }catch(e){
-    toast(e.message);
+    const [g,members,msgs]=await Promise.all([api(`/api/groups/${id}`),api(`/api/groups/${id}/members`),api(`/api/groups/${id}/messages`)]);
+    activeGroup=g; socket?.emit('group:join',id);
+    page.innerHTML=`<div class="pagepad vibePage">
+      <button class="backBtn" onclick="render('groups')">← Communities</button>
+      <section class="communityDetailHero" style="${g.cover_image?`background-image:linear-gradient(90deg,#17112eeF,#17112e77),url('${esc(g.cover_image)}');background-size:cover;background-position:center;`:''}">
+        <div><div class="eyebrow">${esc(g.category||'COMMUNITY')}</div><h1>${g.icon||'👥'} ${esc(g.name)}</h1><p>${esc(g.description||'')}</p>
+        <div class="heroTags"><span>👥 ${g.members} members</span><span>📅 ${g.events_count} upcoming events</span><span>${g.visibility==='private'?'🔒 Private':'🌎 Public'}</span></div></div>
+        <button class="glassBtn" onclick="createEventWizard(${g.id})">＋ Create event</button>
+      </section>
+      <div class="communityTabs">
+        <button class="communityTab active" onclick="openGroupTab('overview',${g.id})">Overview</button>
+        <button class="communityTab" onclick="openGroupTab('chat',${g.id})">💬 Chat</button>
+        <button class="communityTab" onclick="openGroupTab('events',${g.id})">📅 Events</button>
+        <button class="communityTab" onclick="openGroupTab('members',${g.id})">👥 Members</button>
+      </div>
+      <div id="groupTabContent"></div>
+    </div>`;
+    openGroupTab('overview',id,members,msgs,g);
+  }catch(e){toast(e.message)}
+}
+async function openGroupTab(tab,id,providedMembers,providedMsgs,providedGroup){
+  const g=providedGroup||activeGroup;
+  const box=$('groupTabContent'); if(!box)return;
+  if(tab==='overview'){
+    const ev=g.events||await api(`/api/groups/${id}/events`).catch(()=>[]);
+    box.innerHTML=`<div class="communityWorkspace"><section class="card"><div class="title"><div><div class="eyebrow">COMMUNITY EVENTS</div><h2>What's happening</h2></div><button class="secondary" onclick="createEventWizard(${id})">Create event</button></div>
+      <div class="grid">${ev.slice(0,6).map(eventMiniCard).join('')||'<div class="emptyState"><div>📅</div><h3>No events yet</h3><p class="muted">Create the first experience for this community.</p></div>'}</div></section>
+      <aside class="card"><div class="eyebrow">COMMUNITY VIBE</div><h3>Make this more than a feed.</h3><p class="muted">Start a workshop, meetup, coding challenge, cultural evening, trip briefing or anything your people would enjoy.</p><button class="primary full" onclick="createEventWizard(${id})">＋ Create an experience</button></aside></div>`;
+  }else if(tab==='chat'){
+    const msgs=providedMsgs||await api(`/api/groups/${id}/messages`);
+    box.innerHTML=`<section class="card communityChat"><div class="chatHead"><div><b>${esc(g.name)}</b><small> · community chat</small></div><span class="onlineDot">● live</span></div><div class="chatBody" id="msgs">${msgs.map(msgHtml).join('')||'<div class="emptyChat"><div>💭</div><b>No messages yet</b><span>Start the conversation.</span></div>'}</div><form id="groupComposer" class="chatComposer"><input id="groupBody" placeholder="Share an idea, ask a question…"><button class="sendBtn">➤</button></form></section>`;
+    bindComposer(body=>socket.emit('group:message',{groupId:id,body}));
+  }else if(tab==='events'){
+    const ev=await api(`/api/groups/${id}/events`);
+    box.innerHTML=`<div class="title"><div><div class="eyebrow">EVENTS</div><h2>Experiences for ${esc(g.name)}</h2></div><button class="primary" onclick="createEventWizard(${id})">＋ Create event</button></div><div class="grid">${ev.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No events yet</h3></div>'}</div>`;
+  }else{
+    const members=providedMembers||await api(`/api/groups/${id}/members`);
+    box.innerHTML=`<section class="card"><div class="title"><div><div class="eyebrow">MEMBERS</div><h2>${members.length} people in this community</h2></div></div><div class="memberGrid">${members.map(m=>`<div class="memberRow card"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.age||'—'} · ${esc(m.course||m.mode||'Member')}</small></div><span class="memberOnline">●</span></div>`).join('')}</div></section>`;
   }
 }
-
-async function createCommunityEvent(){
-  const vipActive =
-    user?.vip_until &&
-    new Date(user.vip_until) > new Date();
-
-  groups = await api('/api/groups');
-
-  const joinedGroups = groups.filter(g => g.joined);
-
-  if(!joinedGroups.length){
-    toast('Join a community first.');
-    return render('groups');
-  }
-
-  document.getElementById('createEventModal')?.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'createEventModal';
-
-  modal.innerHTML = `
-    <div class="eventCreateBackdrop">
-      <div class="eventCreateCard">
-
-        <div class="eventCreateHeader">
-          <div class="eventCreateIcon">📅</div>
-
-          <div class="eventCreateHeaderText">
-            <div class="eventCreateEyebrow">
-              ${vipActive ? '💎 VIP EVENT CREATOR' : '✨ COMMUNITY EVENT'}
-            </div>
-
-            <h2>Create an event</h2>
-
-            <p>
-              Bring your community together with something worth showing up for.
-            </p>
-          </div>
-
-          <button
-            class="eventCreateClose"
-            onclick="document.getElementById('createEventModal')?.remove()"
-          >×</button>
-        </div>
-
-        <div class="eventCreateStep">
-          <span>1</span>
-          <div>
-            <b>Choose your community</b>
-            <small>Select where this event will happen</small>
-          </div>
-        </div>
-
-        <select id="eventCommunity" class="eventCreateInput">
-          ${joinedGroups.map(g => `
-            <option value="${g.id}">
-              ${esc(g.name)}
-            </option>
-          `).join('')}
-        </select>
-
-        <div class="eventCreateStep">
-          <span>2</span>
-          <div>
-            <b>Event details</b>
-            <small>Tell people what you're planning</small>
-          </div>
-        </div>
-
-        <label class="eventCreateLabel">Event name</label>
-        <input
-          id="eventTitle"
-          class="eventCreateInput"
-          placeholder="e.g. Weekend Coding Meetup"
-          maxlength="100"
-        >
-
-        <label class="eventCreateLabel">Description</label>
-        <textarea
-          id="eventDescription"
-          class="eventCreateInput eventCreateTextarea"
-          rows="4"
-          placeholder="What's happening? Tell your community..."
-          maxlength="500"
-        ></textarea>
-
-        <div class="eventCreateGrid">
-
-          <div>
-            <label class="eventCreateLabel">📍 Location</label>
-            <input
-              id="eventLocation"
-              class="eventCreateInput"
-              placeholder="Online or venue"
-              value="Online"
-            >
-          </div>
-
-          <div>
-            <label class="eventCreateLabel">🕐 Date & time</label>
-            <input
-              id="eventDate"
-              class="eventCreateInput"
-              type="datetime-local"
-            >
-          </div>
-
-        </div>
-
-        <div class="eventCreatePrice">
-          <div>
-            <span class="eventCreatePriceIcon">
-              ${vipActive ? '💎' : '✨'}
-            </span>
-
-            <div>
-              <b>
-                ${vipActive ? 'VIP benefit' : 'Event creation'}
-              </b>
-
-              <small>
-                ${vipActive
-                  ? 'Included with your VIP membership'
-                  : 'One-time community event creation'}
-              </small>
-            </div>
-          </div>
-
-          <strong>
-            ${vipActive ? 'FREE' : '₹29'}
-          </strong>
-        </div>
-
-        <div class="eventCreateActions">
-
-          <button
-            class="eventCancelBtn"
-            onclick="document.getElementById('createEventModal')?.remove()"
-          >
-            Cancel
-          </button>
-
-          <button
-            class="eventCreateBtn"
-            id="saveEventBtn"
-          >
-            ${vipActive
-              ? '💎 Create Event'
-              : '✨ Pay ₹29 & Create'}
-          </button>
-
-        </div>
-
-        <div class="eventCreateSecure">
-          🔒 Secure payment powered by Razorpay
-        </div>
-
-      </div>
+function eventMiniCard(e){
+  return `<article class="card eventCardPro" onclick="renderEventDetail(${e.id})">
+    <div class="eventCover" style="${e.cover_image?`background-image:linear-gradient(180deg,#0000,#0009),url('${esc(e.cover_image)}')`:''}">
+      <span class="eventTypeBadge">${e.event_type==='online'?'💻 Online':e.event_type==='hybrid'?'🔀 Hybrid':'📍 Offline'}</span>
+      <span class="eventStatusBadge">${e.status==='draft'?'Draft':'● Open'}</span>
     </div>
-  `;
-
+    <div class="eventCardBody"><div class="eyebrow">${new Date(e.starts_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · ${new Date(e.starts_at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}</div>
+    <h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'An experience by the community.')}</p>
+    <div class="groupMeta"><span>👥 ${e.attendees||0}${e.capacity?`/${e.capacity}`:''}</span><span>${e.visibility==='invite_only'?'🔗 Invite':e.visibility==='community'?'👥 Community':'🌎 Public'}</span></div></div>
+  </article>`;
+}
+async function createCommunity(){
+  document.getElementById('createCommunityModal')?.remove();
+  const modal=document.createElement('div');modal.id='createCommunityModal';
+  modal.innerHTML=`<div class="eventCreateBackdrop"><div class="eventCreateCard communityCreateCard"><div class="eventCreateHeader"><div class="eventCreateIcon">👥</div><div class="eventCreateHeaderText"><div class="eventCreateEyebrow">BUILD YOUR CIRCLE</div><h2>Create a community</h2><p>Give people a place to meet, discuss and create experiences together.</p></div><button class="eventCreateClose" onclick="this.closest('#createCommunityModal').remove()">×</button></div>
+  <label class="eventCreateLabel">Community name</label><input id="communityName" class="eventCreateInput" maxlength="100" placeholder="e.g. AI Builders India">
+  <label class="eventCreateLabel">Description</label><textarea id="communityDescription" class="eventCreateInput eventCreateTextarea" maxlength="300" placeholder="What is this community about?"></textarea>
+  <div class="eventCreateGrid"><div><label class="eventCreateLabel">Category</label><select id="communityCategory" class="eventCreateInput"><option>Education</option><option>Career</option><option>Technology</option><option>Travel</option><option>Lifestyle</option><option>Entertainment</option><option>Creative</option><option>Local</option><option>General</option></select></div><div><label class="eventCreateLabel">Visibility</label><select id="communityVisibility" class="eventCreateInput"><option value="public">Public</option><option value="private">Private</option></select></div></div>
+  <div class="eventCreateGrid"><div><label class="eventCreateLabel">Icon</label><input id="communityIcon" class="eventCreateInput" value="👥" maxlength="4"></div><div><label class="eventCreateLabel">Cover image URL</label><input id="communityCover" class="eventCreateInput" placeholder="https://…"></div></div>
+  <div class="eventCreateActions"><button class="eventCancelBtn" onclick="this.closest('#createCommunityModal').remove()">Cancel</button><button class="eventCreateBtn" id="createCommunityBtn">Create community</button></div></div></div>`;
   document.body.appendChild(modal);
-
-  if(!document.getElementById('eventCreateStyles')){
-    const style = document.createElement('style');
-    style.id = 'eventCreateStyles';
-
-    style.textContent = `
-      .eventCreateBackdrop{
-        position:fixed;
-        inset:0;
-        z-index:99999;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        padding:20px;
-        background:rgba(15,23,42,.72);
-        backdrop-filter:blur(18px);
+  $('createCommunityBtn').onclick=async()=>{
+    const name=$('communityName').value.trim();if(!name)return toast('Enter a community name.');
+    const payload={name,description:$('communityDescription').value.trim(),category:$('communityCategory').value,visibility:$('communityVisibility').value,icon:$('communityIcon').value.trim()||'👥',coverImage:$('communityCover').value.trim()};
+    const btn=$('createCommunityBtn');btn.disabled=true;
+    try{
+      let created;
+      try{created=await api('/api/groups',{method:'POST',body:payload})}
+      catch(e){
+        if(!String(e.message||'').includes('₹29'))throw e;
+        const o=await api('/api/features/order',{method:'POST',body:{product:'community_create'}});await loadRazorpay();
+        await new Promise((resolve,reject)=>{const c=new Razorpay({key:o.keyId,amount:o.amount,currency:'INR',name:'VibeMeet',description:'Community Creation · ₹29',order_id:o.orderId,prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},modal:{ondismiss:()=>reject(new Error('Payment cancelled'))},handler:async r=>{try{await api('/api/features/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});resolve()}catch(x){reject(x)}}});c.open()});
+        created=await api('/api/groups',{method:'POST',body:payload});
       }
-
-      .eventCreateCard{
-        width:min(650px,96vw);
-        max-height:92vh;
-        overflow-y:auto;
-        padding:30px;
-        border-radius:30px;
-        background:rgba(255,255,255,.98);
-        box-shadow:0 35px 100px rgba(0,0,0,.30);
-        border:1px solid rgba(255,255,255,.8);
-      }
-
-      .eventCreateHeader{
-        display:flex;
-        align-items:flex-start;
-        gap:15px;
-        margin-bottom:26px;
-      }
-
-      .eventCreateIcon{
-        width:58px;
-        height:58px;
-        flex:none;
-        display:grid;
-        place-items:center;
-        border-radius:19px;
-        background:linear-gradient(135deg,#22b7f0,#7357e8,#ec4899);
-        color:#fff;
-        font-size:27px;
-        box-shadow:0 12px 30px rgba(115,87,232,.25);
-      }
-
-      .eventCreateHeaderText{
-        flex:1;
-      }
-
-      .eventCreateEyebrow{
-        font-size:11px;
-        font-weight:900;
-        letter-spacing:.12em;
-        color:#7657df;
-        margin-bottom:4px;
-      }
-
-      .eventCreateHeader h2{
-        margin:0 0 5px;
-        font-size:27px;
-        color:#171525;
-      }
-
-      .eventCreateHeader p{
-        margin:0;
-        color:#777387;
-        font-size:14px;
-        line-height:1.5;
-      }
-
-      .eventCreateClose{
-        width:38px;
-        height:38px;
-        border:0;
-        border-radius:50%;
-        background:#f2f1f6;
-        color:#555;
-        font-size:25px;
-        cursor:pointer;
-      }
-
-      .eventCreateStep{
-        display:flex;
-        align-items:center;
-        gap:11px;
-        margin:20px 0 10px;
-      }
-
-      .eventCreateStep span{
-        width:30px;
-        height:30px;
-        display:grid;
-        place-items:center;
-        border-radius:50%;
-        background:linear-gradient(135deg,#6b5ce7,#ec4899);
-        color:#fff;
-        font-size:13px;
-        font-weight:900;
-      }
-
-      .eventCreateStep b{
-        display:block;
-        font-size:14px;
-        color:#252332;
-      }
-
-      .eventCreateStep small{
-        display:block;
-        color:#8a8695;
-        margin-top:2px;
-      }
-
-      .eventCreateLabel{
-        display:block;
-        margin:14px 0 7px;
-        font-size:13px;
-        font-weight:800;
-        color:#403c4b;
-      }
-
-      .eventCreateInput{
-        width:100%;
-        box-sizing:border-box;
-        padding:13px 14px;
-        border:1px solid #e3e0eb;
-        border-radius:14px;
-        background:#faf9fc;
-        color:#252332;
-        font:inherit;
-        outline:none;
-        transition:.2s;
-      }
-
-      .eventCreateInput:focus{
-        border-color:#8167e8;
-        background:#fff;
-        box-shadow:0 0 0 4px rgba(129,103,232,.10);
-      }
-
-      .eventCreateTextarea{
-        resize:vertical;
-        min-height:105px;
-      }
-
-      .eventCreateGrid{
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:14px;
-        margin-top:2px;
-      }
-
-      .eventCreatePrice{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:15px;
-        margin-top:22px;
-        padding:15px 17px;
-        border-radius:17px;
-        background:linear-gradient(135deg,#f5f3ff,#fff0f7);
-        border:1px solid #ebe5fa;
-      }
-
-      .eventCreatePrice > div{
-        display:flex;
-        align-items:center;
-        gap:11px;
-      }
-
-      .eventCreatePriceIcon{
-        width:38px;
-        height:38px;
-        display:grid;
-        place-items:center;
-        border-radius:12px;
-        background:#fff;
-      }
-
-      .eventCreatePrice b{
-        display:block;
-        font-size:13px;
-      }
-
-      .eventCreatePrice small{
-        display:block;
-        margin-top:3px;
-        color:#888493;
-      }
-
-      .eventCreatePrice strong{
-        font-size:19px;
-        color:#6d4fe4;
-      }
-
-      .eventCreateActions{
-        display:grid;
-        grid-template-columns:1fr 1.7fr;
-        gap:12px;
-        margin-top:20px;
-      }
-
-      .eventCancelBtn,
-      .eventCreateBtn{
-        min-height:50px;
-        border:0;
-        border-radius:15px;
-        font-weight:900;
-        font-size:14px;
-        cursor:pointer;
-      }
-
-      .eventCancelBtn{
-        background:#f2f1f5;
-        color:#55515e;
-      }
-
-      .eventCreateBtn{
-        color:#fff;
-        background:linear-gradient(135deg,#20b5ef,#7255e8,#ec4899);
-        box-shadow:0 10px 25px rgba(108,78,220,.25);
-      }
-
-      .eventCreateBtn:hover{
-        transform:translateY(-1px);
-      }
-
-      .eventCreateSecure{
-        text-align:center;
-        margin-top:13px;
-        color:#9995a3;
-        font-size:11px;
-      }
-
-      @media(max-width:600px){
-        .eventCreateCard{
-          padding:22px;
-          border-radius:24px;
-        }
-
-        .eventCreateGrid{
-          grid-template-columns:1fr;
-          gap:0;
-        }
-
-        .eventCreateActions{
-          grid-template-columns:1fr;
-        }
-
-        .eventCreateHeader h2{
-          font-size:23px;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  document.getElementById('saveEventBtn').onclick = async () => {
-
-    const groupId =
-      Number(document.getElementById('eventCommunity').value);
-
-    const selectedGroup =
-      joinedGroups.find(g => Number(g.id) === groupId);
-
-    const title =
-      document.getElementById('eventTitle').value.trim();
-
-    const description =
-      document.getElementById('eventDescription').value.trim();
-
-    const location =
-      document.getElementById('eventLocation').value.trim() || 'Online';
-
-    const when =
-      document.getElementById('eventDate').value;
-
-    if(!selectedGroup)
-      return toast('Choose a community.');
-
-    if(!title)
-      return toast('Enter an event name.');
-
-    if(!when)
-      return toast('Choose a date and time.');
-
-    const dt = new Date(when);
-
-    if(Number.isNaN(dt.getTime()))
-      return toast('Invalid date/time.');
-
-    const btn = document.getElementById('saveEventBtn');
-
-    try {
-
-      btn.disabled = true;
-      btn.textContent = vipActive
-        ? 'Creating event...'
-        : 'Opening secure payment...';
-
-      /* VIP users create directly */
-      if(!vipActive){
-
-        const order = await api('/api/features/order', {
-          method:'POST',
-          body:{
-            product:'event_create'
-          }
-        });
-
-        await loadRazorpay();
-
-        await new Promise((resolve,reject) => {
-
-          const checkout = new Razorpay({
-
-            key:order.keyId,
-            amount:order.amount,
-            currency:'INR',
-            name:'VibeMeet',
-            description:'Community Event Creation · ₹29',
-            order_id:order.orderId,
-
-            prefill:{
-              name:user?.name || '',
-              email:user?.email || ''
-            },
-
-            theme:{
-              color:'#6b4ce6'
-            },
-
-            modal:{
-              ondismiss:() =>
-                reject(new Error('Payment cancelled'))
-            },
-
-            handler:async payment => {
-
-              try{
-
-                if(
-                  !payment?.razorpay_order_id ||
-                  !payment?.razorpay_payment_id ||
-                  !payment?.razorpay_signature
-                ){
-                  throw new Error('Payment response was incomplete.');
-                }
-
-                await api('/api/features/verify',{
-                  method:'POST',
-                  body:{
-                    orderId:payment.razorpay_order_id,
-                    paymentId:payment.razorpay_payment_id,
-                    signature:payment.razorpay_signature
-                  }
-                });
-
-                resolve();
-
-              }catch(e){
-                reject(e);
-              }
-            }
-
-          });
-
-          checkout.open();
-        });
-      }
-
-      btn.textContent = 'Creating event...';
-
-      await api(`/api/groups/${selectedGroup.id}/events`,{
-        method:'POST',
-        body:{
-          title,
-          description,
-          location,
-          startsAt:dt.toISOString()
-        }
-      });
-
-      modal.remove();
-
-      toast(
-        vipActive
-          ? '💎 Event created successfully!'
-          : '📅 Payment successful — event created!'
-      );
-
-      render('events');
-
-    }catch(e){
-
-      btn.disabled = false;
-
-      btn.textContent = vipActive
-        ? '💎 Create Event'
-        : '✨ Pay ₹29 & Create';
-
-      toast(e.message);
-    }
+      modal.remove();toast('🎉 Community created');render('groups');
+    }catch(e){btn.disabled=false;toast(e.message)}
   };
+}
+
+async function renderEvents(){
+  try{
+    const params=new URLSearchParams(location.search),invite=params.get('eventInvite');
+    if(invite){
+      try{const e=await api(`/api/events/invite/${encodeURIComponent(invite)}`);return renderEventDetail(e.id,invite)}catch{}
+    }
+    events=await api('/api/events');
+    page.innerHTML=`<div class="pagepad eventsHub">
+      <section class="eventsHero"><div><div class="eyebrow">VIBEMEET EVENTS 🎟️</div><h1>Make plans people can actually join.</h1><p>Create coding challenges, workshops, satsangs, cultural meetups, trips, hangouts or anything else — online, offline or hybrid.</p></div><button class="primary" onclick="createEventWizard()">＋ Create event</button></section>
+      <div class="eventFilterBar"><div class="filterRow"><button class="filterPill active" onclick="filterEvents('')">All</button><button class="filterPill" onclick="filterEvents('online')">💻 Online</button><button class="filterPill" onclick="filterEvents('offline')">📍 Offline</button><button class="filterPill" onclick="filterEvents('hybrid')">🔀 Hybrid</button></div><input id="eventSearch" class="communitySearch" placeholder="Search events…"></div>
+      <div id="eventsGrid" class="grid">${events.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No upcoming events</h3><p class="muted">Be the first to create one.</p></div>'}</div>
+    </div>`;
+    $('eventSearch').oninput=()=>filterEvents($('eventSearch').value);
+  }catch(e){toast(e.message)}
+}
+function filterEvents(query){
+  const q=String(query||'').toLowerCase().trim();
+  const list=events.filter(e=>!q||[e.title,e.description,e.group_name,e.location].some(v=>String(v||'').toLowerCase().includes(q)));
+  $('eventsGrid').innerHTML=list.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🔎</div><h3>No matching events</h3></div>';
+}
+async function joinEvent(id,inviteToken=''){
+  try{await api(`/api/events/${id}/join`,{method:'POST',body:inviteToken?{inviteToken}:{}});toast('🎉 You joined the event');return renderEventDetail(id,inviteToken)}catch(e){toast(e.message)}
+}
+async function renderEventDetail(id,inviteToken=''){
+  try{
+    const e=await api(`/api/events/${id}${inviteToken?`?inviteToken=${encodeURIComponent(inviteToken)}`:''}`);window.activeEvent=e;
+    page.innerHTML=`<div class="pagepad eventDetailPage"><button class="backBtn" onclick="render('events')">← Events</button>
+      <section class="eventDetailHero" style="${e.cover_image?`background-image:linear-gradient(90deg,#15112eeF,#15112e66),url('${esc(e.cover_image)}');background-size:cover;background-position:center;`:''}">
+        <div><span class="eventTypeBadge">${e.event_type==='online'?'💻 Online':e.event_type==='hybrid'?'🔀 Hybrid':'📍 Offline'}</span><h1>${esc(e.title)}</h1><p>${esc(e.description||'')}</p><div class="heroTags"><span>📅 ${new Date(e.starts_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span><span>👥 ${e.attendees||0}${e.capacity?`/${e.capacity}`:''}</span><span>${e.visibility==='invite_only'?'🔗 Invite only':e.visibility==='community'?'👥 Community':'🌎 Public'}</span></div></div>
+        <div class="eventHeroActions">${Number(e.creator_id)===Number(user.id)?`<button class="primary" onclick="manageEvent(${e.id})">⚙ Manage</button>`:e.joined?`<button class="secondary" onclick="leaveEvent(${e.id})">Leave event</button>`:`<button class="primary" onclick="joinEvent(${e.id},'${esc(inviteToken)}')">🎟️ Join event</button>`}</div>
+      </section>
+      <div class="eventDetailGrid"><main>
+        <section class="card"><div class="title"><div><div class="eyebrow">EVENT DETAILS</div><h2>Everything you need</h2></div></div>
+          <div class="eventInfoGrid"><div><span>🕐 When</span><b>${new Date(e.starts_at).toLocaleString('en-IN',{dateStyle:'full',timeStyle:'short'})}</b></div><div><span>${e.event_type==='online'?'🔗 Where':'📍 Where'}</span><b>${esc(e.venue_name||e.location||e.address||'Online')}</b></div><div><span>🎟️ Access</span><b>${e.visibility==='community'?'Community members':e.visibility==='invite_only'?'Invite only':e.visibility==='private'?'Private':'Public'}</b></div><div><span>👤 Hosted by</span><b>${esc(e.creator_name||'VibeMeet member')}</b></div></div>
+          ${e.address?`<p class="eventAddress">📍 ${esc(e.address)}</p>`:''}
+          ${e.external_url?`<a class="primary eventExternalLink" href="${esc(e.external_url)}" target="_blank" rel="noopener">🚀 Join external event</a>`:''}
+        </section>
+        <section class="card"><div class="title"><div><div class="eyebrow">ANNOUNCEMENTS</div><h2>Keep everyone aligned</h2></div></div>${e.announcements?.map(a=>`<div class="announcement"><b>📢 ${esc(a.author_name)}</b><p>${esc(a.body)}</p><small>${new Date(a.created_at).toLocaleString()}</small></div>`).join('')||'<p class="muted">No announcements yet.</p>'}</section>
+        ${e.joined?`<section class="card"><div class="title"><div><div class="eyebrow">EVENT CHAT</div><h2>Talk with participants</h2></div></div><div id="eventChatBody" class="eventChatBody">${e.messages?.map(m=>`<div class="eventMsg"><b>${esc(m.sender_name)}</b><span>${esc(m.body)}</span></div>`).join('')||'<p class="muted">No messages yet.</p>'}</div><form id="eventChatForm" class="chatComposer"><input id="eventChatInput" placeholder="Message the event…"><button class="sendBtn">➤</button></form></section>`:''}
+      </main><aside>
+        <section class="card"><div class="sideTitle"><span>Participants</span><b>${e.attendees||0}</b></div><div class="memberStack">${(e.members||[]).slice(0,12).map(m=>`<div class="memberRow"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.role==='host'?'Host':m.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div>${e.joined||Number(e.creator_id)===Number(user.id)?`<button class="secondary full" onclick="showEventParticipants(${e.id})">View all participants</button>`:''}</section>
+        <section class="card"><div class="eyebrow">SHARE</div><h3>Bring your people</h3><button class="secondary full" onclick="shareEvent(${e.id})">🔗 Share invite</button><button class="secondary full" onclick="showEventQR(${e.id})">▦ Show QR code</button></section>
+        ${Number(e.creator_id)===Number(user.id)?`<section class="card"><div class="eyebrow">CREATOR</div><button class="secondary full" onclick="manageEvent(${e.id})">⚙ Manage event</button><button class="secondary full" onclick="eventAnalytics(${e.id})">📊 Attendance analytics</button></section>`:`<section class="card"><div class="eyebrow">SAFETY</div><button class="secondary full" onclick="reportEvent(${e.id})">🛡️ Report event</button></section>`}
+      </aside></div></div>`;
+    if($('eventChatForm'))$('eventChatForm').onsubmit=async ev=>{ev.preventDefault();const input=$('eventChatInput');const body=input.value.trim();if(!body)return;try{await api(`/api/events/${id}/chat`,{method:'POST',body:{body}});input.value='';const fresh=await api(`/api/events/${id}`);window.activeEvent=fresh;renderEventDetail(id,inviteToken)}catch(x){toast(x.message)}};
+  }catch(e){toast(e.message)}
+}
+async function leaveEvent(id){try{await api(`/api/events/${id}/leave`,{method:'POST'});toast('You left the event');renderEventDetail(id)}catch(e){toast(e.message)}}
+async function shareEvent(id){
+  try{const r=await api(`/api/events/${id}/invite`,{method:'POST'});if(navigator.share)await navigator.share({title:'VibeMeet event',text:'Join this event on VibeMeet',url:r.url});else{await navigator.clipboard.writeText(r.url);toast('🔗 Invite link copied')}}catch(e){toast(e.message)}
+}
+async function showEventQR(id){
+  try{const r=await api(`/api/events/${id}/invite`,{method:'POST'});const m=document.createElement('div');m.className='eventCreateBackdrop';m.innerHTML=`<div class="eventCreateCard qrCard"><div class="title"><div><div class="eyebrow">SCAN TO JOIN</div><h2>Event QR code</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><img class="eventQrImage" src="https://quickchart.io/qr?size=240&text=${encodeURIComponent(r.url)}" alt="Event QR code"><p class="muted">${esc(r.url)}</p><button class="primary full" onclick="navigator.clipboard.writeText('${esc(r.url)}');toast('Link copied')">Copy invite link</button></div>`;document.body.appendChild(m)}catch(e){toast(e.message)}
+}
+async function showEventParticipants(id){
+  try{const m=await api(`/api/events/${id}/members`);const box=document.createElement('div');box.className='eventCreateBackdrop';box.innerHTML=`<div class="eventCreateCard"><div class="title"><div><div class="eyebrow">PARTICIPANTS</div><h2>${m.length} registered</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><div class="participantList">${m.map(x=>`<div class="memberRow"><div class="miniAvatar">${x.avatar||'💜'}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div></div>`;document.body.appendChild(box)}catch(e){toast(e.message)}
+}
+async function manageEvent(id){
+  const e=await api(`/api/events/${id}`);const m=document.createElement('div');m.className='eventCreateBackdrop';m.innerHTML=`<div class="eventCreateCard"><div class="eventCreateHeader"><div class="eventCreateIcon">⚙</div><div class="eventCreateHeaderText"><div class="eventCreateEyebrow">EVENT CONTROL</div><h2>Manage ${esc(e.title)}</h2><p>Publish, announce, moderate participants and track attendance.</p></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div>
+  <div class="manageStats"><div><b>${e.attendees||0}</b><small>Joined</small></div><div><b>${(e.members||[]).filter(x=>x.attended).length}</b><small>Attended</small></div><div><b>${e.capacity||'∞'}</b><small>Capacity</small></div></div>
+  <label class="eventCreateLabel">Announcement</label><textarea id="manageAnnouncement" class="eventCreateInput eventCreateTextarea" placeholder="Tell everyone what they need to know…"></textarea>
+  <div class="eventCreateActions"><button class="secondary" onclick="postEventAnnouncement(${id})">📢 Post</button><button class="eventCreateBtn" onclick="eventAnalytics(${id});this.closest('.eventCreateBackdrop').remove()">📊 Analytics</button></div>
+  <div class="participantList">${(e.members||[]).map(x=>`<div class="memberRow"><div class="miniAvatar">${x.avatar||'💜'}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div>${x.role!=='host'?`<button class="iconBtn" onclick="markEventAttendance(${id},${x.id})">✓</button><button class="iconBtn" onclick="removeEventMember(${id},${x.id})">Remove</button>`:''}</div>`).join('')}</div></div>`;document.body.appendChild(m);
+}
+async function postEventAnnouncement(id){const body=$('manageAnnouncement')?.value.trim();if(!body)return toast('Write an announcement.');try{await api(`/api/events/${id}/announcements`,{method:'POST',body:{body}});toast('📢 Announcement posted');document.querySelector('.eventCreateBackdrop')?.remove();renderEventDetail(id)}catch(e){toast(e.message)}}
+async function markEventAttendance(id,uid){try{await api(`/api/events/${id}/attendance`,{method:'POST',body:{userId:uid}});toast('✓ Attendance marked');manageEvent(id)}catch(e){toast(e.message)}}
+async function removeEventMember(id,uid){try{await api(`/api/events/${id}/members/${uid}`,{method:'DELETE'});toast('Participant removed');manageEvent(id)}catch(e){toast(e.message)}}
+async function eventAnalytics(id){try{const x=await api(`/api/events/${id}/analytics`);const m=document.createElement('div');m.className='eventCreateBackdrop';m.innerHTML=`<div class="eventCreateCard"><div class="title"><div><div class="eyebrow">EVENT ANALYTICS</div><h2>Attendance & growth</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><div class="manageStats"><div><b>${x.stats.total}</b><small>Registered</small></div><div><b>${x.stats.attended}</b><small>Attended</small></div><div><b>${x.stats.total?Math.round(x.stats.attended/x.stats.total*100):0}%</b><small>Attendance</small></div></div><p class="muted">Use this to understand turnout and improve future community experiences.</p></div>`;document.body.appendChild(m)}catch(e){toast(e.message)}}
+async function reportEvent(id){const reason=prompt('Reason for reporting this event?');if(!reason)return;try{await api(`/api/events/${id}/report`,{method:'POST',body:{reason}});toast('🛡️ Report submitted');}catch(e){toast(e.message)}}
+
+async function createEventWizard(preselectedGroupId=null){
+  groups=await api('/api/groups');
+  const joined=groups.filter(g=>g.joined);
+  document.getElementById('createEventModal')?.remove();
+  const m=document.createElement('div');m.id='createEventModal';m.innerHTML=`<div class="eventCreateBackdrop"><div class="eventCreateCard eventWizardCard">
+    <div class="eventCreateHeader"><div class="eventCreateIcon">🎟️</div><div class="eventCreateHeaderText"><div class="eventCreateEyebrow">CREATE AN EXPERIENCE</div><h2>Build your event</h2><p>Online, offline or hybrid — you decide how people join.</p></div><button class="eventCreateClose" onclick="this.closest('#createEventModal').remove()">×</button></div>
+    <div class="wizardProgress"><span class="active">1</span><i></i><span>2</span><i></i><span>3</span><i></i><span>4</span></div>
+    <div class="wizardStep" data-step="1"><h3>What are you creating?</h3><p class="muted">Start with the basics.</p><label class="eventCreateLabel">Event name</label><input id="newEventTitle" class="eventCreateInput" maxlength="120" placeholder="Python DSA Challenge, Ganga Satsang, College Meetup…">
+      <label class="eventCreateLabel">Description</label><textarea id="newEventDescription" class="eventCreateInput eventCreateTextarea" maxlength="1000" placeholder="Tell people what they can expect."></textarea>
+      <label class="eventCreateLabel">Cover image URL <span class="muted">(optional)</span></label><input id="newEventCover" class="eventCreateInput" placeholder="https://…"></div>
+    <div class="wizardStep hidden" data-step="2"><h3>How will it happen?</h3><p class="muted">Choose online, offline or both.</p><div class="eventModeCards"><button type="button" class="modeChoice active" data-type="offline" onclick="selectEventMode('offline')">📍<b>Offline</b><small>Meet at a real place</small></button><button type="button" class="modeChoice" data-type="online" onclick="selectEventMode('online')">💻<b>Online</b><small>Use another platform</small></button><button type="button" class="modeChoice" data-type="hybrid" onclick="selectEventMode('hybrid')">🔀<b>Hybrid</b><small>People can do either</small></button></div>
+      <div id="onlineFields" class="hidden"><label class="eventCreateLabel">External event link</label><input id="newEventExternal" class="eventCreateInput" placeholder="Google Meet, Zoom, Discord, LeetCode, HackerRank…"></div>
+      <div id="offlineFields"><div class="eventCreateGrid"><div><label class="eventCreateLabel">Venue</label><input id="newEventVenue" class="eventCreateInput" placeholder="Venue / hall / café"></div><div><label class="eventCreateLabel">Address</label><input id="newEventAddress" class="eventCreateInput" placeholder="Full address"></div></div></div></div>
+    <div class="wizardStep hidden" data-step="3"><h3>Who can join?</h3><p class="muted">Control discovery and registration.</p><div class="eventCreateGrid"><div><label class="eventCreateLabel">Visibility</label><select id="newEventVisibility" class="eventCreateInput"><option value="public">🌎 Public</option><option value="community">👥 Community members</option><option value="invite_only">🔗 Invite-only</option><option value="private">🔒 Private</option></select></div><div><label class="eventCreateLabel">Community <span class="muted">(optional)</span></label><select id="newEventGroup" class="eventCreateInput"><option value="">No community</option>${joined.map(g=>`<option value="${g.id}" ${Number(preselectedGroupId)===Number(g.id)?'selected':''}>${esc(g.name)}</option>`).join('')}</select></div></div>
+      <label class="eventCreateLabel">Maximum participants <span class="muted">(optional)</span></label><input id="newEventCapacity" class="eventCreateInput" type="number" min="1" max="100000" placeholder="Leave empty for unlimited">
+      <label class="eventCreateLabel">Registration note</label><input id="newEventNote" class="eventCreateInput" maxlength="500" placeholder="What should participants bring or know?"></div>
+    <div class="wizardStep hidden" data-step="4"><h3>When should it happen?</h3><label class="eventCreateLabel">Date & time</label><input id="newEventDate" class="eventCreateInput" type="datetime-local"><label class="eventCreateLabel">Publishing</label><select id="newEventStatus" class="eventCreateInput"><option value="published">🚀 Publish now</option><option value="draft">📝 Save as draft</option></select><div id="eventReview" class="eventReview"></div><div class="eventCreatePrice"><div><b>Event creation</b><small>VIP creators are included; otherwise the existing ₹29 event-creation flow applies.</small></div><strong>${user?.vip_until&&new Date(user.vip_until)>new Date()?'FREE':'₹29'}</strong></div></div>
+    <div class="eventCreateActions"><button class="eventCancelBtn" id="eventPrev" disabled>Back</button><button class="eventCreateBtn" id="eventNext">Continue</button></div>
+  </div></div>`;
+  document.body.appendChild(m);window.newEventMode='offline';let step=1;
+  const setStep=n=>{step=n;document.querySelectorAll('#createEventModal .wizardStep').forEach(x=>x.classList.toggle('hidden',Number(x.dataset.step)!==n));document.querySelectorAll('.wizardProgress span').forEach((x,i)=>x.classList.toggle('active',i<n));$('eventPrev').disabled=n===1;$('eventNext').textContent=n===4?'✨ Create event':'Continue';if(n===4)updateEventReview()};
+  $('eventNext').onclick=async()=>{if(step<4){if(step===1&&!$('newEventTitle').value.trim())return toast('Enter an event name.');if(step===2){if((window.newEventMode==='online'||window.newEventMode==='hybrid')&&!$('newEventExternal').value.trim())return toast('Add the online event link.');if((window.newEventMode==='offline'||window.newEventMode==='hybrid')&&!($('newEventVenue').value.trim()||$('newEventAddress').value.trim()))return toast('Add the offline venue or address.')}setStep(step+1)}else await submitNewEvent()};
+  $('eventPrev').onclick=()=>step>1&&setStep(step-1);
+  setStep(1);
+}
+function selectEventMode(type){window.newEventMode=type;document.querySelectorAll('.modeChoice').forEach(x=>x.classList.toggle('active',x.dataset.type===type));$('onlineFields').classList.toggle('hidden',type==='offline');$('offlineFields').classList.toggle('hidden',type==='online')}
+function updateEventReview(){const date=$('newEventDate').value;const group=$('newEventGroup').selectedOptions[0]?.textContent||'No community';$('eventReview').innerHTML=`<div><b>${esc($('newEventTitle').value||'Untitled event')}</b><span>${window.newEventMode} · ${esc(group)}</span><span>${date?new Date(date).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Choose a date'}</span></div>`}
+async function submitNewEvent(){
+  const when=$('newEventDate').value;if(!when)return toast('Choose a date and time.');
+  const dt=new Date(when);if(dt<=new Date())return toast('Choose a future date.');
+  const payload={title:$('newEventTitle').value.trim(),description:$('newEventDescription').value.trim(),coverImage:$('newEventCover').value.trim(),startsAt:dt.toISOString(),eventType:window.newEventMode,visibility:$('newEventVisibility').value,groupId:$('newEventGroup').value?Number($('newEventGroup').value):null,capacity:$('newEventCapacity').value?Number($('newEventCapacity').value):null,registrationNote:$('newEventNote').value.trim(),status:$('newEventStatus').value,externalUrl:$('newEventExternal')?.value.trim()||'',venueName:$('newEventVenue')?.value.trim()||'',address:$('newEventAddress')?.value.trim()||''};
+  const btn=$('eventNext');btn.disabled=true;btn.textContent='Creating…';
+  try{
+    const vipActive=user?.vip_until&&new Date(user.vip_until)>new Date();
+    if(!vipActive){
+      const order=await api('/api/features/order',{method:'POST',body:{product:'event_create'}});await loadRazorpay();
+      await new Promise((resolve,reject)=>{const c=new Razorpay({key:order.keyId,amount:order.amount,currency:'INR',name:'VibeMeet',description:'Event Creation · ₹29',order_id:order.orderId,prefill:{name:user?.name||'',email:user?.email||''},theme:{color:'#6b4ce6'},modal:{ondismiss:()=>reject(new Error('Payment cancelled'))},handler:async r=>{try{await api('/api/features/verify',{method:'POST',body:{orderId:r.razorpay_order_id,paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}});resolve()}catch(e){reject(e)}}});c.open()});
+    }
+    const e=await api('/api/events',{method:'POST',body:payload});document.getElementById('createEventModal')?.remove();toast('🎉 Event created');renderEventDetail(e.id);
+  }catch(e){btn.disabled=false;btn.textContent='✨ Create event';toast(e.message)}
 }
 
 async function renderCompatibility(refresh=false){const qs=await api('/api/compatibility/questions');if(refresh||!Object.keys(answerDraft).length){const saved=await api('/api/compatibility/answers').catch(()=>[]);const savedMap={};arr(saved).forEach(x=>savedMap[x.question_id]=x.answer);answerDraft={...savedMap}}const safeOption=v=>encodeURIComponent(String(v??''));page.innerHTML=`<div class="pagepad"><div class="sectionHero compactHero"><div><div class="eyebrow">YOUR VIBE DNA 🧩</div><h1>Compatibility</h1><p>Quick choices help VibeMeet find people who naturally click with you.</p></div></div><div class="grid" style="margin-top:18px">${qs.map(q=>`<div class="card"><div class="eyebrow">QUESTION</div><h3>${esc(q.question)}</h3><div class="actions"><button type="button" class="${answerDraft[q.id]===q.option_a?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_a)}'))">${esc(q.option_a)}</button><button type="button" class="${answerDraft[q.id]===q.option_b?'primary':'secondary'}" onclick="chooseAnswer(${q.id},decodeURIComponent('${safeOption(q.option_b)}'))">${esc(q.option_b)}</button></div></div>`).join('')}</div><button type="button" class="primary" style="margin-top:18px" onclick="saveAnswers()">Save my vibe ✨</button></div>`}

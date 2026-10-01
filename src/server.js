@@ -238,7 +238,7 @@ app.patch("/api/me",auth,async(req,res)=>{const allowedGender=["male","female","
 // Communities and events
 app.post("/api/groups", auth, async(req,res)=>{
   try{
-    const {name,description}=req.body;
+    const {name,description,category,icon,coverImage,visibility}=req.body;
 
     if(!name || !name.trim()){
       return res.status(400).json({error:"Community name is required"});
@@ -285,13 +285,17 @@ app.post("/api/groups", auth, async(req,res)=>{
 
     try{
       const group = await q(
-        `INSERT INTO groups(name,description,slug,category,created_by)
-          VALUES($1,$2,$3,$4,$5)
+        `INSERT INTO groups(name,description,slug,category,icon,cover_image,visibility,created_by)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8)
           RETURNING *`,
         [
         name.trim(),
         description?.trim() || "",
-        name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""),"General",
+        name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")+"-"+Date.now(),
+        String(category||"General").slice(0,60),
+        String(icon||"👥").slice(0,20),
+        String(coverImage||"").slice(0,2000),
+        ['public','private'].includes(String(visibility))?String(visibility):'public',
         req.user.id
         ]
       );
@@ -323,54 +327,260 @@ app.post("/api/groups", auth, async(req,res)=>{
     res.status(500).json({error:"Unable to create community"});
   }
 });
-app.get("/api/groups",auth,async(req,res)=>{const r=await q(`SELECT g.*,COUNT(gm.user_id)::int AS members,EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$1) AS joined FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id GROUP BY g.id ORDER BY members DESC,g.name`,[req.user.id]);res.json(r.rows)});
+app.get("/api/groups",auth,async(req,res)=>{const r=await q(`SELECT g.*,COUNT(DISTINCT gm.user_id)::int AS members,COUNT(DISTINCT e.id)::int AS events_count,EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$1) AS joined FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id LEFT JOIN events e ON e.group_id=g.id AND e.status='published' AND e.starts_at>=NOW() GROUP BY g.id ORDER BY members DESC,g.name`,[req.user.id]);res.json(r.rows)});
+
+app.get("/api/groups/:id",auth,async(req,res)=>{
+  const id=Number(req.params.id);
+  const r=await q(`SELECT g.*,COUNT(DISTINCT gm.user_id)::int members,
+    COUNT(DISTINCT e.id)::int events_count,
+    EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$2) joined
+    FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id
+    LEFT JOIN events e ON e.group_id=g.id AND e.status='published' AND e.starts_at>=NOW()
+    WHERE g.id=$1 GROUP BY g.id`,[id,req.user.id]);
+  if(!r.rowCount)return res.status(404).json({error:"Community not found"});
+  const events=await q(`SELECT e.*,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2) joined
+    FROM events e LEFT JOIN event_members em ON em.event_id=e.id
+    WHERE e.group_id=$1 AND e.status='published' GROUP BY e.id ORDER BY e.starts_at LIMIT 50`,[id,req.user.id]);
+  res.json({...r.rows[0],events:events.rows});
+});
+app.put("/api/groups/:id",auth,async(req,res)=>{
+  const id=Number(req.params.id);
+  const own=await q("SELECT 1 FROM groups WHERE id=$1 AND created_by=$2",[id,req.user.id]);
+  if(!own.rowCount)return res.status(403).json({error:"Only the community creator can edit it"});
+  const b=req.body||{};
+  const r=await q(`UPDATE groups SET name=$2,description=$3,category=$4,icon=$5,cover_image=$6,visibility=$7,updated_at=NOW() WHERE id=$1 RETURNING *`,
+    [id,String(b.name||'').trim().slice(0,100),String(b.description||'').slice(0,300),String(b.category||'General').slice(0,60),String(b.icon||'👥').slice(0,20),String(b.coverImage||'').slice(0,2000),['public','private'].includes(String(b.visibility))?String(b.visibility):'public']);
+  res.json(r.rows[0]);
+});
+app.get("/api/groups/:id/events",auth,async(req,res)=>{
+  const id=Number(req.params.id);
+  const m=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[id,req.user.id]);
+  if(!m.rowCount)return res.status(403).json({error:"Join the community to see its events"});
+  const r=await q(`SELECT e.*,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2) joined
+    FROM events e LEFT JOIN event_members em ON em.event_id=e.id
+    WHERE e.group_id=$1 ORDER BY e.starts_at DESC LIMIT 100`,[id,req.user.id]);
+  res.json(r.rows);
+});
 app.post("/api/groups/:id/join",auth,async(req,res)=>{await q("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true})});
 app.post("/api/groups/:id/leave",auth,async(req,res)=>{await q("DELETE FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);res.json({ok:true})});
 app.get("/api/groups/:id/members",auth,async(req,res)=>{const r=await q(`SELECT u.id,u.name,u.avatar,u.bio,u.verified,u.age,u.city,u.college,u.course,u.interests,u.mode FROM users u JOIN group_members gm ON gm.user_id=u.id WHERE gm.group_id=$1 ORDER BY u.verified DESC,u.name LIMIT 100`,[req.params.id]);res.json(r.rows)});
 app.get("/api/groups/:id/messages",auth,async(req,res)=>{const r=await q(`SELECT m.id,m.body,m.attachment_data,m.attachment_mime,m.created_at,u.id sender_id,u.name sender_name,u.avatar FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.group_id=$1 ORDER BY m.created_at DESC LIMIT 100`,[req.params.id]);res.json(r.rows.reverse())});
-app.get("/api/events",auth,async(req,res)=>{const r=await q(`SELECT e.*,g.name group_name,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$1) AS joined FROM events e JOIN groups g ON g.id=e.group_id LEFT JOIN event_members em ON em.event_id=e.id WHERE e.starts_at>=NOW()-INTERVAL '1 day' GROUP BY e.id,g.name ORDER BY e.starts_at LIMIT 100`,[req.user.id]);res.json(r.rows)});
-app.post("/api/groups/:id/events",auth,async(req,res)=>{
-  const vip = await q(
-  "SELECT vip_until FROM users WHERE id=$1",
-  [req.user.id]
-);
 
-const isVip =
-  vip.rows[0]?.vip_until &&
-  new Date(vip.rows[0].vip_until) > new Date();
-
-let purchaseId = null;
-
-if(!isVip){
-  const purchase = await q(
-    `UPDATE feature_purchases
-     SET status='used'
-     WHERE id=(
-       SELECT id
-       FROM feature_purchases
-       WHERE user_id=$1
-         AND product='event_create'
-         AND status='paid'
-       ORDER BY id ASC
-       LIMIT 1
-     )
-     RETURNING id`,
-    [req.user.id]
-  );
-
-  if(!purchase.rowCount){
-    return res.status(402).json({
-      error:"₹29 payment is required to create an event."
-    });
-  }
-
-  purchaseId = purchase.rows[0].id;
+// ================= FLEXIBLE COMMUNITIES + EVENTS =================
+function eventToken(){return crypto.randomBytes(18).toString('hex');}
+function cleanEventType(v){return ['online','offline','hybrid'].includes(String(v))?String(v):'offline'}
+function cleanEventVisibility(v){return ['public','community','invite_only','private'].includes(String(v))?String(v):'public'}
+function cleanEventStatus(v){return ['draft','published','cancelled','completed'].includes(String(v))?String(v):'published'}
+async function eventRow(id,userId){
+  const r=await q(`SELECT e.*,g.name group_name,u.name creator_name,
+    COUNT(DISTINCT em.user_id)::int attendees,
+    EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2) AS joined,
+    EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2 AND x.status='approved') AS approved
+    FROM events e
+    LEFT JOIN groups g ON g.id=e.group_id
+    JOIN users u ON u.id=e.creator_id
+    LEFT JOIN event_members em ON em.event_id=e.id AND em.status IN ('joined','approved')
+    WHERE e.id=$1 GROUP BY e.id,g.name,u.name`,[id,userId]);
+  return r.rows[0];
+}
+async function isEventManager(eventId,userId){
+  const r=await q("SELECT 1 FROM events WHERE id=$1 AND creator_id=$2",[eventId,userId]);
+  return !!r.rowCount;
+}
+async function isEventMember(eventId,userId){
+  const r=await q("SELECT status FROM event_members WHERE event_id=$1 AND user_id=$2",[eventId,userId]);
+  return r.rows[0]||null;
 }
 
+app.get("/api/events",auth,async(req,res)=>{
+  try{
+    const type=['online','offline','hybrid'].includes(String(req.query.type||''))?String(req.query.type):null;
+    const visibility=String(req.query.visibility||'');
+    const category=String(req.query.category||'').trim().slice(0,60);
+    const params=[req.user.id]; const where=["(e.status='published' OR e.creator_id=$1)","e.starts_at>=NOW()-INTERVAL '1 day'"];
+    if(type){params.push(type);where.push(`e.event_type=$${params.length}`)}
+    if(visibility && ['public','community','invite_only','private'].includes(visibility)){params.push(visibility);where.push(`e.visibility=$${params.length}`)}
+    if(category){params.push(`%${category}%`);where.push(`(g.category ILIKE $${params.length} OR e.title ILIKE $${params.length})`)}
+    const r=await q(`SELECT e.*,g.name group_name,u.name creator_name,
+      COUNT(DISTINCT em.user_id)::int attendees,
+      EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$1) joined
+      FROM events e LEFT JOIN groups g ON g.id=e.group_id JOIN users u ON u.id=e.creator_id
+      LEFT JOIN event_members em ON em.event_id=e.id AND em.status IN ('joined','approved')
+      WHERE ${where.join(' AND ')}
+      GROUP BY e.id,g.name,u.name ORDER BY e.starts_at LIMIT 200`,params);
+    const rows=r.rows.filter(e=>{
+      if(e.visibility==='private') return Number(e.creator_id)===Number(req.user.id)||Boolean(e.joined);
+      if(e.visibility==='invite_only') return Boolean(e.joined)||Number(e.creator_id)===Number(req.user.id);
+      if(e.visibility==='community' && e.group_id){
+        return Boolean(e.joined)||Number(e.creator_id)===Number(req.user.id);
+      }
+      return true;
+    });
+    res.json(rows);
+  }catch(e){res.status(500).json({error:"Unable to load events"})}
+});
 
-  const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[req.params.id,req.user.id]);if(!member.rowCount)return res.status(403).json({error:"Join the group first"});const {title,description,startsAt,location}=req.body;if(!title||!startsAt)return res.status(400).json({error:"Title and start time required"});const r=await q("INSERT INTO events(group_id,creator_id,title,description,starts_at,location) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",[req.params.id,req.user.id,String(title).slice(0,120),String(description||"").slice(0,500),startsAt,String(location||"").slice(0,150)]);res.json(r.rows[0])});
+app.get("/api/events/:id",auth,async(req,res)=>{
+  try{
+    const e=await eventRow(Number(req.params.id),req.user.id);
+    if(!e)return res.status(404).json({error:"Event not found"});
+    const inviteToken=String(req.query.inviteToken||'');
+    let validInvite=false;
+    if(inviteToken){
+      const iv=await q("SELECT 1 FROM event_invites WHERE event_id=$1 AND token=$2 AND (expires_at IS NULL OR expires_at>NOW())",[e.id,inviteToken]);
+      validInvite=!!iv.rowCount || inviteToken===e.invite_token;
+    }
+    if(e.visibility==='private' && Number(e.creator_id)!==Number(req.user.id) && !e.joined)return res.status(403).json({error:"This event is private"});
+    if(e.visibility==='invite_only' && Number(e.creator_id)!==Number(req.user.id) && !e.joined && !validInvite)return res.status(403).json({error:"Invitation required"});
+    const [members,announcements,messages]=await Promise.all([
+      q(`SELECT u.id,u.name,u.avatar,u.city,u.college,em.role,em.status,em.attended,em.joined_at
+         FROM event_members em JOIN users u ON u.id=em.user_id WHERE em.event_id=$1 ORDER BY em.role='host' DESC,em.joined_at`,[e.id]),
+      q(`SELECT a.*,u.name author_name,u.avatar FROM event_announcements a JOIN users u ON u.id=a.author_id WHERE a.event_id=$1 ORDER BY a.created_at DESC LIMIT 50`,[e.id]),
+      q(`SELECT m.*,u.name sender_name,u.avatar FROM event_messages m JOIN users u ON u.id=m.sender_id WHERE m.event_id=$1 ORDER BY m.created_at ASC LIMIT 100`,[e.id])
+    ]);
+    res.json({...e,members:members.rows,announcements:announcements.rows,messages:messages.rows});
+  }catch(e){res.status(500).json({error:"Unable to load event"})}
+});
 
-app.post("/api/events/:id/join",auth,async(req,res)=>{await q("INSERT INTO event_members(event_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[req.params.id,req.user.id]);res.json({ok:true})});
+app.post("/api/events",auth,async(req,res)=>{
+  try{
+    const {title,description,startsAt,eventType,visibility,capacity,externalUrl,coverImage,venueName,address,latitude,longitude,groupId,status,registrationNote}=req.body||{};
+    const cleanTitle=String(title||'').trim().slice(0,120);
+    if(!cleanTitle||!startsAt)return res.status(400).json({error:"Event name and date/time are required"});
+    const when=new Date(startsAt);
+    if(Number.isNaN(when.getTime())||when<=new Date())return res.status(400).json({error:"Choose a future event date"});
+    const type=cleanEventType(eventType), vis=cleanEventVisibility(visibility), st=cleanEventStatus(status);
+    const cap=capacity?Math.max(1,Math.min(100000,Number(capacity))):null;
+    const gid=groupId?Number(groupId):null;
+    if(gid){
+      const g=await q("SELECT id FROM groups WHERE id=$1",[gid]);
+      if(!g.rowCount)return res.status(404).json({error:"Community not found"});
+      if(vis==='community'){
+        const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[gid,req.user.id]);
+        if(!member.rowCount)return res.status(403).json({error:"Join the community first"});
+      }
+    }
+    if(vis==='community'&&!gid)return res.status(400).json({error:"Community visibility requires a community"});
+    if(type==='online'&&!String(externalUrl||'').trim())return res.status(400).json({error:"Add the online event link"});
+    if((type==='offline'||type==='hybrid')&&!String(venueName||address||location||'').trim())return res.status(400).json({error:"Add the offline venue or address"});
+
+    const vip=await q("SELECT vip_until FROM users WHERE id=$1",[req.user.id]);
+    const vipActive=vip.rows[0]?.vip_until&&new Date(vip.rows[0].vip_until)>new Date();
+    if(!vipActive){
+      const purchase=await q(`UPDATE feature_purchases SET status='used'
+        WHERE id=(SELECT id FROM feature_purchases WHERE user_id=$1 AND product='event_create' AND status='paid' ORDER BY id LIMIT 1)
+        RETURNING id`,[req.user.id]);
+      if(!purchase.rowCount)return res.status(402).json({error:"₹29 payment is required to create an event."});
+    }
+    const token=eventToken();
+    const r=await q(`INSERT INTO events(group_id,creator_id,title,description,starts_at,location,event_type,visibility,capacity,external_url,cover_image,venue_name,address,latitude,longitude,status,invite_token,registration_note)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [gid,req.user.id,cleanTitle,String(description||'').slice(0,1000),when.toISOString(),
+       String((type==='online'?'Online':(venueName||address||'Offline'))||'').slice(0,150),type,vis,cap,String(externalUrl||'').slice(0,1000),String(coverImage||'').slice(0,2000),
+       String(venueName||'').slice(0,180),String(address||'').slice(0,300),latitude||null,longitude||null,st,token,String(registrationNote||'').slice(0,500)]);
+    await q(`INSERT INTO event_members(event_id,user_id,role,status) VALUES($1,$2,'host','approved') ON CONFLICT(event_id,user_id) DO UPDATE SET role='host',status='approved'`,[r.rows[0].id,req.user.id]);
+    res.status(201).json(r.rows[0]);
+  }catch(e){console.error("Create event:",e.message);res.status(500).json({error:"Unable to create event"})}
+});
+
+app.post("/api/groups/:id/events",auth,async(req,res)=>{
+  req.body={...(req.body||{}),groupId:Number(req.params.id),visibility:req.body?.visibility||'community'};
+  const oldJson=res.json.bind(res);
+  res.json=(v)=>oldJson(v);
+  // Reuse the same event rules while keeping the legacy endpoint available.
+  const fakeReq={...req,body:req.body};
+  try{
+    const gid=Number(req.params.id);
+    const member=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[gid,req.user.id]);
+    if(!member.rowCount)return res.status(403).json({error:"Join the group first"});
+    const {title,description,startsAt,location}=req.body;
+    if(!title||!startsAt)return res.status(400).json({error:"Title and start time required"});
+    const vip=await q("SELECT vip_until FROM users WHERE id=$1",[req.user.id]);
+    const vipActive=vip.rows[0]?.vip_until&&new Date(vip.rows[0].vip_until)>new Date();
+    if(!vipActive){
+      const purchase=await q(`UPDATE feature_purchases SET status='used' WHERE id=(SELECT id FROM feature_purchases WHERE user_id=$1 AND product='event_create' AND status='paid' ORDER BY id LIMIT 1) RETURNING id`,[req.user.id]);
+      if(!purchase.rowCount)return res.status(402).json({error:"₹29 payment is required to create an event."});
+    }
+    const token=eventToken();
+    const r=await q(`INSERT INTO events(group_id,creator_id,title,description,starts_at,location,event_type,visibility,status,invite_token) VALUES($1,$2,$3,$4,$5,$6,'offline','community','published',$7) RETURNING *`,
+      [gid,req.user.id,String(title).slice(0,120),String(description||'').slice(0,1000),startsAt,String(location||'Offline').slice(0,150),token]);
+    await q(`INSERT INTO event_members(event_id,user_id,role,status) VALUES($1,$2,'host','approved')`,[r.rows[0].id,req.user.id]);
+    res.json(r.rows[0]);
+  }catch(e){res.status(500).json({error:"Unable to create event"})}
+});
+
+app.put("/api/events/:id",auth,async(req,res)=>{
+  try{
+    const id=Number(req.params.id); if(!(await isEventManager(id,req.user.id)))return res.status(403).json({error:"Only the event creator can edit it"});
+    const e=await eventRow(id,req.user.id); const b=req.body||{};
+    const when=b.startsAt?new Date(b.startsAt):new Date(e.starts_at);
+    if(Number.isNaN(when.getTime())||when<=new Date())return res.status(400).json({error:"Choose a future event date"});
+    const r=await q(`UPDATE events SET title=$2,description=$3,starts_at=$4,event_type=$5,visibility=$6,capacity=$7,external_url=$8,cover_image=$9,venue_name=$10,address=$11,latitude=$12,longitude=$13,status=$14,registration_note=$15,location=$16,updated_at=NOW()
+      WHERE id=$1 RETURNING *`,[id,String(b.title??e.title).slice(0,120),String(b.description ?? e.description ?? '').slice(0,1000),when.toISOString(),
+      cleanEventType(b.eventType||e.event_type),cleanEventVisibility(b.visibility||e.visibility),b.capacity?Math.max(1,Math.min(100000,Number(b.capacity))):null,
+      String(b.externalUrl ?? e.external_url ?? '').slice(0,1000),String(b.coverImage ?? e.cover_image ?? '').slice(0,2000),String(b.venueName ?? e.venue_name ?? '').slice(0,180),String(b.address ?? e.address ?? '').slice(0,300),b.latitude??e.latitude,b.longitude??e.longitude,cleanEventStatus(b.status||e.status),String(b.registrationNote ?? e.registration_note ?? '').slice(0,500),
+      String(b.location ?? e.location ?? '').slice(0,150)]);
+    res.json(r.rows[0]);
+  }catch(e){res.status(500).json({error:"Unable to update event"})}
+});
+app.post("/api/events/:id/publish",auth,async(req,res)=>{if(!(await isEventManager(Number(req.params.id),req.user.id)))return res.status(403).json({error:"Only the creator can publish"});const r=await q("UPDATE events SET status='published',updated_at=NOW() WHERE id=$1 RETURNING *",[Number(req.params.id)]);res.json(r.rows[0])});
+app.post("/api/events/:id/cancel",auth,async(req,res)=>{if(!(await isEventManager(Number(req.params.id),req.user.id)))return res.status(403).json({error:"Only the creator can cancel"});const r=await q("UPDATE events SET status='cancelled',updated_at=NOW() WHERE id=$1 RETURNING *",[Number(req.params.id)]);res.json(r.rows[0])});
+
+app.post("/api/events/:id/join",auth,async(req,res)=>{
+  try{
+    const id=Number(req.params.id),e=await eventRow(id,req.user.id); if(!e)return res.status(404).json({error:"Event not found"});
+    if(e.status!=='published')return res.status(400).json({error:"Registration is not open"});
+    if(Number(e.creator_id)===Number(req.user.id))return res.json({ok:true,host:true});
+    if(e.capacity && Number(e.attendees)>=Number(e.capacity))return res.status(409).json({error:"This event is full"});
+    if(e.visibility==='community'&&e.group_id){const m=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[e.group_id,req.user.id]);if(!m.rowCount)return res.status(403).json({error:"Join the community first"});}
+    if(e.visibility==='invite_only'){
+      const token=String(req.body?.inviteToken||'');
+      const ok=token && (token===e.invite_token || (await q("SELECT 1 FROM event_invites WHERE event_id=$1 AND token=$2",[id,token])).rowCount);
+      if(!ok)return res.status(403).json({error:"This event requires an invitation"});
+    }
+    await q("INSERT INTO event_members(event_id,user_id,role,status) VALUES($1,$2,'participant','joined') ON CONFLICT(event_id,user_id) DO UPDATE SET status='joined'",[id,req.user.id]);
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:"Unable to join event"})}
+});
+app.post("/api/events/:id/leave",auth,async(req,res)=>{const id=Number(req.params.id);if(await isEventManager(id,req.user.id))return res.status(400).json({error:"The host cannot leave their own event"});await q("DELETE FROM event_members WHERE event_id=$1 AND user_id=$2",[id,req.user.id]);res.json({ok:true})});
+
+app.get("/api/events/:id/members",auth,async(req,res)=>{const id=Number(req.params.id),e=await eventRow(id,req.user.id);if(!e)return res.status(404).json({error:"Event not found"});if(!e.joined&&Number(e.creator_id)!==Number(req.user.id))return res.status(403).json({error:"Join the event to see participants"});const r=await q(`SELECT u.id,u.name,u.avatar,u.city,u.college,em.role,em.status,em.attended,em.joined_at FROM event_members em JOIN users u ON u.id=em.user_id WHERE em.event_id=$1 ORDER BY em.role='host' DESC,em.joined_at`,[id]);res.json(r.rows)});
+
+app.post("/api/events/:id/invite",auth,async(req,res)=>{
+  const id=Number(req.params.id); const manager=await isEventManager(id,req.user.id); const member=await isEventMember(id,req.user.id);
+  if(!manager&&!member)return res.status(403).json({error:"Join the event before sharing it"});
+  const token=eventToken(); await q("INSERT INTO event_invites(event_id,inviter_id,invitee_id,token,expires_at) VALUES($1,$2,$3,$4,NOW()+INTERVAL '30 days')",[id,req.user.id,req.body?.inviteeId?Number(req.body.inviteeId):null,token]);
+  const base=String(process.env.APP_URL||'').replace(/\/$/,'')||`${req.protocol}://${req.get('host')}`;
+  res.json({token,url:`${base}/?eventInvite=${encodeURIComponent(token)}`});
+});
+app.get("/api/events/invite/:token",auth,async(req,res)=>{const token=String(req.params.token);const r=await q(`SELECT e.*,g.name group_name,u.name creator_name FROM events e LEFT JOIN groups g ON g.id=e.group_id JOIN users u ON u.id=e.creator_id LEFT JOIN event_invites i ON i.event_id=e.id AND i.token=$1 WHERE e.invite_token=$1 OR i.token=$1 LIMIT 1`,[token]);if(!r.rowCount)return res.status(404).json({error:"Invite not found or expired"});res.json(r.rows[0])});
+
+app.get("/api/events/:id/announcements",auth,async(req,res)=>{const r=await q("SELECT a.*,u.name author_name,u.avatar FROM event_announcements a JOIN users u ON u.id=a.author_id WHERE a.event_id=$1 ORDER BY a.created_at DESC LIMIT 50",[Number(req.params.id)]);res.json(r.rows)});
+app.post("/api/events/:id/announcements",auth,async(req,res)=>{const id=Number(req.params.id);if(!(await isEventManager(id,req.user.id)))return res.status(403).json({error:"Only the creator can post announcements"});const body=String(req.body?.body||'').trim().slice(0,1000);if(!body)return res.status(400).json({error:"Write an announcement"});const r=await q("INSERT INTO event_announcements(event_id,author_id,body) VALUES($1,$2,$3) RETURNING *",[id,req.user.id,body]);res.json(r.rows[0])});
+
+app.get("/api/events/:id/chat",auth,async(req,res)=>{const m=await isEventMember(Number(req.params.id),req.user.id);if(!m)return res.status(403).json({error:"Join the event to use event chat"});const r=await q("SELECT m.*,u.name sender_name,u.avatar FROM event_messages m JOIN users u ON u.id=m.sender_id WHERE m.event_id=$1 ORDER BY m.created_at ASC LIMIT 200",[Number(req.params.id)]);res.json(r.rows)});
+app.post("/api/events/:id/chat",auth,async(req,res)=>{const id=Number(req.params.id),m=await isEventMember(id,req.user.id);if(!m)return res.status(403).json({error:"Join the event to use event chat"});const body=String(req.body?.body||'').trim().slice(0,2000);if(!body)return res.status(400).json({error:"Message cannot be empty"});const r=await q("INSERT INTO event_messages(event_id,sender_id,body) VALUES($1,$2,$3) RETURNING *",[id,req.user.id,body]);res.json(r.rows[0])});
+
+app.post("/api/events/:id/attendance",auth,async(req,res)=>{const id=Number(req.params.id);if(!(await isEventManager(id,req.user.id)))return res.status(403).json({error:"Only the creator can mark attendance"});const uid=Number(req.body?.userId);if(!uid)return res.status(400).json({error:"Participant required"});const r=await q("INSERT INTO event_attendance(event_id,user_id,marked_by) VALUES($1,$2,$3) ON CONFLICT(event_id,user_id) DO UPDATE SET marked_by=EXCLUDED.marked_by,attended_at=NOW() RETURNING *",[id,uid,req.user.id]);await q("UPDATE event_members SET attended=true WHERE event_id=$1 AND user_id=$2",[id,uid]);res.json(r.rows[0])});
+
+app.delete("/api/events/:id/members/:userId",auth,async(req,res)=>{const id=Number(req.params.id),uid=Number(req.params.userId);if(!(await isEventManager(id,req.user.id)))return res.status(403).json({error:"Only the creator can remove participants"});if(uid===Number(req.user.id))return res.status(400).json({error:"The host cannot be removed"});await q("DELETE FROM event_members WHERE event_id=$1 AND user_id=$2",[id,uid]);res.json({ok:true})});
+app.post("/api/events/:id/report",auth,async(req,res)=>{const id=Number(req.params.id),participantId=req.body?.participantId?Number(req.body.participantId):null;const reason=String(req.body?.reason||'other').slice(0,80),details=String(req.body?.details||'').slice(0,1000);const r=await q("INSERT INTO event_reports(event_id,reporter_id,participant_id,reason,details) VALUES($1,$2,$3,$4,$5) RETURNING *",[id,req.user.id,participantId,reason,details]);res.status(201).json(r.rows[0])});
+
+app.get("/api/admin/event-reports",auth,async(req,res)=>{
+  if(req.user.role!=='admin')return res.status(403).json({error:"Admin access required"});
+  const r=await q(`SELECT er.*,e.title event_title,u.name reporter_name,p.name participant_name
+    FROM event_reports er JOIN events e ON e.id=er.event_id JOIN users u ON u.id=er.reporter_id
+    LEFT JOIN users p ON p.id=er.participant_id ORDER BY er.created_at DESC LIMIT 200`);
+  res.json(r.rows);
+});
+app.post("/api/admin/event-reports/:id/action",auth,async(req,res)=>{
+  if(req.user.role!=='admin')return res.status(403).json({error:"Admin access required"});
+  const action=String(req.body?.action||'reviewed');
+  const r=await q("UPDATE event_reports SET status=$2 WHERE id=$1 RETURNING *",[Number(req.params.id),action==='resolved'?'resolved':'reviewed']);
+  if(!r.rowCount)return res.status(404).json({error:"Report not found"});
+  res.json(r.rows[0]);
+});
+app.get("/api/events/:id/analytics",auth,async(req,res)=>{const id=Number(req.params.id);if(!(await isEventManager(id,req.user.id)))return res.status(403).json({error:"Only the creator can view analytics"});const e=await eventRow(id,req.user.id);const r=await q(`SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE attended)::int attended,COUNT(*) FILTER(WHERE status='joined')::int joined FROM event_members WHERE event_id=$1`,[id]);res.json({event:e,stats:r.rows[0]})});
 
 // Compatibility and profile discovery
 app.get("/api/compatibility/questions",auth,async(_req,res)=>{const r=await q("SELECT * FROM compatibility_questions ORDER BY id");res.json(r.rows)});
