@@ -356,8 +356,10 @@ app.get("/api/groups/:id/events",auth,async(req,res)=>{
   const id=Number(req.params.id);
   const m=await q("SELECT 1 FROM group_members WHERE group_id=$1 AND user_id=$2",[id,req.user.id]);
   if(!m.rowCount)return res.status(403).json({error:"Join the community to see its events"});
-  const r=await q(`SELECT e.*,COUNT(em.user_id)::int attendees,EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2) joined
-    FROM events e LEFT JOIN event_members em ON em.event_id=e.id
+  const r=await q(`SELECT e.*,COALESCE(a.attendees,0)::int attendees,
+    EXISTS(SELECT 1 FROM event_members x WHERE x.event_id=e.id AND x.user_id=$2) joined
+    FROM events e
+    LEFT JOIN (SELECT event_id,COUNT(user_id)::int attendees FROM event_members GROUP BY event_id) a ON a.event_id=e.id
     WHERE e.group_id=$1 ORDER BY e.starts_at DESC LIMIT 100`,[id,req.user.id]);
   res.json(r.rows);
 });

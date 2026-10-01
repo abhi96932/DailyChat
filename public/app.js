@@ -196,6 +196,15 @@ let answerDraft={},profilePhotos=[],publicPhotoIndex=0,replyDraft=null,messageCa
 const $=id=>document.getElementById(id),page=$('page');
 const api=async(url,opt={})=>{opt.credentials='include';opt.headers={...(opt.headers||{}),...(token?{Authorization:'Bearer '+token}:{})};if(opt.body&&typeof opt.body!=='string'){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(opt.body)}const r=await fetch(url,opt),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function memberAvatarHtml(avatar,name='Member'){
+  const src=String(avatar||'').trim();
+  if(/^(?:data:image\/|https?:\/\/)/i.test(src)){
+    return `<img class="miniAvatarImg" src="${esc(src)}" alt="${esc(name)}" loading="lazy" decoding="async" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'miniAvatarInitial',textContent:'${esc(String(name||'M').trim().charAt(0).toUpperCase())}'}))">`;
+  }
+  const initial=String(name||'M').trim().charAt(0).toUpperCase()||'M';
+  return `<span class="miniAvatarInitial">${esc(initial)}</span>`;
+}
+
 const arr=s=>Array.isArray(s)?s:[];const chips=a=>arr(a).slice(0,8).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
 const avatarHtml=(a,cls='profileAvatar')=>a?`<img class="${cls}" src="${esc(a)}" alt="Profile photo" loading="lazy">`:`<div class="${cls} avatarFallback">💜</div>`;
 if(!$('multiPhotoStyles')){const st=document.createElement('style');st.id='multiPhotoStyles';st.textContent=`.multiPhotoHead{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px}.photoGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.photoTile{position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:2px solid transparent;background:#f4f3fa;cursor:grab}.photoTile.main{border-color:#8b5cf6}.photoTile img{width:100%;height:100%;object-fit:cover;display:block}.photoTileBar{position:absolute;left:0;right:0;bottom:0;padding:9px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;display:flex;justify-content:space-between;align-items:end;font-size:12px;font-weight:700}.photoTileBar button{border:0;border-radius:50%;width:28px;height:28px;background:rgba(255,255,255,.9);color:#111;font-size:18px;cursor:pointer}.mainBadge{position:absolute;top:9px;left:9px;background:#fff;color:#6d28d9;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:900}.photoEmpty{grid-column:1/-1;padding:28px;text-align:center;border:1px dashed #cfc8e8;border-radius:18px;color:#777}.publicGalleryMain{position:relative;aspect-ratio:4/5;max-height:620px;border-radius:24px;overflow:hidden;background:#f4f3fa}.publicGalleryPhoto{width:100%;height:100%;object-fit:cover;display:block}.galleryArrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.88);font-size:30px;cursor:pointer}.galleryArrow.left{left:14px}.galleryArrow.right{right:14px}.galleryDots{display:flex;justify-content:center;gap:7px;padding-top:12px}.galleryDot{width:8px;height:8px;border:0;border-radius:50%;background:#d4d0df;cursor:pointer}.galleryDot.active{background:#7c3aed;width:22px;border-radius:9px}.publicProfileCard{overflow:hidden}@media(max-width:700px){.multiPhotoHead{align-items:flex-start;flex-direction:column}.photoGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`;document.head.appendChild(st)}
@@ -692,7 +701,7 @@ async function openGroupTab(tab,id,providedMembers,providedMsgs,providedGroup){
   if(tab==='overview'){
     const ev=g.events||await api(`/api/groups/${id}/events`).catch(()=>[]);
     box.innerHTML=`<div class="communityWorkspace"><section class="card"><div class="title"><div><div class="eyebrow">COMMUNITY EVENTS</div><h2>What's happening</h2></div><button class="secondary" onclick="createEventWizard(${id})">Create event</button></div>
-      <div class="grid">${ev.slice(0,6).map(eventMiniCard).join('')||'<div class="emptyState"><div>📅</div><h3>No events yet</h3><p class="muted">Create the first experience for this community.</p></div>'}</div></section>
+      <div class="grid eventsGrid">${ev.slice(0,6).map(eventMiniCard).join('')||'<div class="emptyState"><div>📅</div><h3>No events yet</h3><p class="muted">Create the first experience for this community.</p></div>'}</div></section>
       <aside class="card"><div class="eyebrow">COMMUNITY VIBE</div><h3>Make this more than a feed.</h3><p class="muted">Start a workshop, meetup, coding challenge, cultural evening, trip briefing or anything your people would enjoy.</p><button class="primary full" onclick="createEventWizard(${id})">＋ Create an experience</button></aside></div>`;
   }else if(tab==='chat'){
     const msgs=providedMsgs||await api(`/api/groups/${id}/messages`);
@@ -700,23 +709,34 @@ async function openGroupTab(tab,id,providedMembers,providedMsgs,providedGroup){
     bindComposer(body=>socket.emit('group:message',{groupId:id,body}));
   }else if(tab==='events'){
     const ev=await api(`/api/groups/${id}/events`);
-    box.innerHTML=`<div class="title"><div><div class="eyebrow">EVENTS</div><h2>Experiences for ${esc(g.name)}</h2></div><button class="primary" onclick="createEventWizard(${id})">＋ Create event</button></div><div class="grid">${ev.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No events yet</h3></div>'}</div>`;
+    box.innerHTML=`<div class="title communityEventsHeader"><div><div class="eyebrow">EVENTS</div><h2>Experiences for ${esc(g.name)}</h2><p class="muted">Join coding sessions, cultural meetups, workshops and more.</p></div><button class="primary" onclick="createEventWizard(${id})">＋ Create event</button></div><div class="grid eventsGrid">${ev.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No events yet</h3></div>'}</div>`;
   }else{
     const members=providedMembers||await api(`/api/groups/${id}/members`);
-    box.innerHTML=`<section class="card"><div class="title"><div><div class="eyebrow">MEMBERS</div><h2>${members.length} people in this community</h2></div></div><div class="memberGrid">${members.map(m=>`<div class="memberRow card"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.age||'—'} · ${esc(m.course||m.mode||'Member')}</small></div><span class="memberOnline">●</span></div>`).join('')}</div></section>`;
+    box.innerHTML=`<section class="card"><div class="title"><div><div class="eyebrow">MEMBERS</div><h2>${members.length} people in this community</h2></div></div><div class="memberGrid">${members.map(m=>`<div class="memberRow card"><div class="miniAvatar">${memberAvatarHtml(m.avatar,m.name)}</div><div><b>${esc(m.name)}</b><small>${m.age||'—'} · ${esc(m.course||m.mode||'Member')}</small></div><span class="memberOnline">●</span></div>`).join('')}</div></section>`;
   }
 }
 function eventMiniCard(e){
-  return `<article class="card eventCardPro" onclick="renderEventDetail(${e.id})">
-    <div class="eventCover" style="${e.cover_image?`background-image:linear-gradient(180deg,#0000,#0009),url('${esc(e.cover_image)}')`:''}">
-      <span class="eventTypeBadge">${e.event_type==='online'?'💻 Online':e.event_type==='hybrid'?'🔀 Hybrid':'📍 Offline'}</span>
+  const type=e.event_type==='online'?'online':e.event_type==='hybrid'?'hybrid':'offline';
+  const typeLabel=type==='online'?'💻 Online':type==='hybrid'?'🔀 Hybrid':'📍 Offline';
+  const date=new Date(e.starts_at);
+  const dateLabel=Number.isNaN(date.getTime())?'Date TBA':date.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const timeLabel=Number.isNaN(date.getTime())?'':date.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'});
+  const cover=e.cover_image?`background-image:linear-gradient(180deg,#11162a10 5%,#11162ad9 100%),url(\'${esc(e.cover_image)}\')`:' ';
+  return `<article class="card eventCardPro eventCardType-${type}" onclick="renderEventDetail(${e.id})">
+    <div class="eventCover" style="${cover}">
+      <span class="eventTypeBadge">${typeLabel}</span>
       <span class="eventStatusBadge">${e.status==='draft'?'Draft':'● Open'}</span>
+      ${!e.cover_image?`<div class="eventCoverFallback"><strong>${type==='online'?'⌁':type==='hybrid'?'↗':'✦'}</strong><span>${type==='online'?'Connect from anywhere':type==='hybrid'?'Online + in person':'Meet in person'}</span></div>`:''}
     </div>
-    <div class="eventCardBody"><div class="eyebrow">${new Date(e.starts_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · ${new Date(e.starts_at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}</div>
-    <h3>${esc(e.title)}</h3><p class="muted">${esc(e.description||'An experience by the community.')}</p>
-    <div class="groupMeta"><span>👥 ${e.attendees||0}${e.capacity?`/${e.capacity}`:''}</span><span>${e.visibility==='invite_only'?'🔗 Invite':e.visibility==='community'?'👥 Community':'🌎 Public'}</span></div></div>
+    <div class="eventCardBody">
+      <div class="eventDateRow"><span>📅 ${esc(dateLabel)}</span><span>${esc(timeLabel)}</span></div>
+      <h3>${esc(e.title)}</h3>
+      <p class="muted">${esc(e.description||'An experience by the community.')}</p>
+      <div class="eventCardFooter"><div class="groupMeta"><span>👥 ${e.attendees||0}${e.capacity?`/${e.capacity}`:''}</span><span>${e.visibility==='invite_only'?'🔗 Invite only':e.visibility==='community'?'👥 Community':'🌎 Public'}</span></div><span class="eventArrow">→</span></div>
+    </div>
   </article>`;
 }
+
 async function createCommunity(){
   document.getElementById('createCommunityModal')?.remove();
   const modal=document.createElement('div');modal.id='createCommunityModal';
@@ -745,7 +765,9 @@ async function createCommunity(){
   };
 }
 
+let activeEventFilter='';
 async function renderEvents(){
+  activeEventFilter='';
   try{
     const params=new URLSearchParams(location.search),invite=params.get('eventInvite');
     if(invite){
@@ -754,16 +776,25 @@ async function renderEvents(){
     events=await api('/api/events');
     page.innerHTML=`<div class="pagepad eventsHub">
       <section class="eventsHero"><div><div class="eyebrow">VIBEMEET EVENTS 🎟️</div><h1>Make plans people can actually join.</h1><p>Create coding challenges, workshops, satsangs, cultural meetups, trips, hangouts or anything else — online, offline or hybrid.</p></div><button class="primary" onclick="createEventWizard()">＋ Create event</button></section>
-      <div class="eventFilterBar"><div class="filterRow"><button class="filterPill active" onclick="filterEvents('')">All</button><button class="filterPill" onclick="filterEvents('online')">💻 Online</button><button class="filterPill" onclick="filterEvents('offline')">📍 Offline</button><button class="filterPill" onclick="filterEvents('hybrid')">🔀 Hybrid</button></div><input id="eventSearch" class="communitySearch" placeholder="Search events…"></div>
-      <div id="eventsGrid" class="grid">${events.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No upcoming events</h3><p class="muted">Be the first to create one.</p></div>'}</div>
+      <div class="eventFilterBar"><div class="filterRow"><button class="filterPill active" data-event-filter="" onclick="setEventFilter('')">All</button><button class="filterPill" data-event-filter="online" onclick="setEventFilter('online')">💻 Online</button><button class="filterPill" data-event-filter="offline" onclick="setEventFilter('offline')">📍 Offline</button><button class="filterPill" data-event-filter="hybrid" onclick="setEventFilter('hybrid')">🔀 Hybrid</button></div><input id="eventSearch" class="communitySearch" placeholder="Search events…"></div>
+      <div id="eventsGrid" class="grid eventsGrid">${events.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🎟️</div><h3>No upcoming events</h3><p class="muted">Be the first to create one.</p></div>'}</div>
     </div>`;
     $('eventSearch').oninput=()=>filterEvents($('eventSearch').value);
   }catch(e){toast(e.message)}
 }
+function setEventFilter(type){
+  activeEventFilter=String(type||'');
+  filterEvents($('eventSearch')?.value||'');
+}
 function filterEvents(query){
   const q=String(query||'').toLowerCase().trim();
-  const list=events.filter(e=>!q||[e.title,e.description,e.group_name,e.location].some(v=>String(v||'').toLowerCase().includes(q)));
-  $('eventsGrid').innerHTML=list.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🔎</div><h3>No matching events</h3></div>';
+  document.querySelectorAll('[data-event-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.eventFilter===activeEventFilter));
+  const list=events.filter(e=>{
+    const matchesType=!activeEventFilter||e.event_type===activeEventFilter;
+    const matchesText=!q||[e.title,e.description,e.group_name,e.location,e.venue_name].some(v=>String(v||'').toLowerCase().includes(q));
+    return matchesType&&matchesText;
+  });
+  $('eventsGrid').innerHTML=list.map(eventMiniCard).join('')||'<div class="card emptyState"><div>🔎</div><h3>No matching events</h3><p class="muted">Try another search or event type.</p></div>';
 }
 async function joinEvent(id,inviteToken=''){
   try{await api(`/api/events/${id}/join`,{method:'POST',body:inviteToken?{inviteToken}:{}});toast('🎉 You joined the event');return renderEventDetail(id,inviteToken)}catch(e){toast(e.message)}
@@ -785,7 +816,7 @@ async function renderEventDetail(id,inviteToken=''){
         <section class="card"><div class="title"><div><div class="eyebrow">ANNOUNCEMENTS</div><h2>Keep everyone aligned</h2></div></div>${e.announcements?.map(a=>`<div class="announcement"><b>📢 ${esc(a.author_name)}</b><p>${esc(a.body)}</p><small>${new Date(a.created_at).toLocaleString()}</small></div>`).join('')||'<p class="muted">No announcements yet.</p>'}</section>
         ${e.joined?`<section class="card"><div class="title"><div><div class="eyebrow">EVENT CHAT</div><h2>Talk with participants</h2></div></div><div id="eventChatBody" class="eventChatBody">${e.messages?.map(m=>`<div class="eventMsg"><b>${esc(m.sender_name)}</b><span>${esc(m.body)}</span></div>`).join('')||'<p class="muted">No messages yet.</p>'}</div><form id="eventChatForm" class="chatComposer"><input id="eventChatInput" placeholder="Message the event…"><button class="sendBtn">➤</button></form></section>`:''}
       </main><aside>
-        <section class="card"><div class="sideTitle"><span>Participants</span><b>${e.attendees||0}</b></div><div class="memberStack">${(e.members||[]).slice(0,12).map(m=>`<div class="memberRow"><div class="miniAvatar">${m.avatar||'💜'}</div><div><b>${esc(m.name)}</b><small>${m.role==='host'?'Host':m.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div>${e.joined||Number(e.creator_id)===Number(user.id)?`<button class="secondary full" onclick="showEventParticipants(${e.id})">View all participants</button>`:''}</section>
+        <section class="card"><div class="sideTitle"><span>Participants</span><b>${e.attendees||0}</b></div><div class="memberStack">${(e.members||[]).slice(0,12).map(m=>`<div class="memberRow"><div class="miniAvatar">${memberAvatarHtml(m.avatar,m.name)}</div><div><b>${esc(m.name)}</b><small>${m.role==='host'?'Host':m.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div>${e.joined||Number(e.creator_id)===Number(user.id)?`<button class="secondary full" onclick="showEventParticipants(${e.id})">View all participants</button>`:''}</section>
         <section class="card"><div class="eyebrow">SHARE</div><h3>Bring your people</h3><button class="secondary full" onclick="shareEvent(${e.id})">🔗 Share invite</button><button class="secondary full" onclick="showEventQR(${e.id})">▦ Show QR code</button></section>
         ${Number(e.creator_id)===Number(user.id)?`<section class="card"><div class="eyebrow">CREATOR</div><button class="secondary full" onclick="manageEvent(${e.id})">⚙ Manage event</button><button class="secondary full" onclick="eventAnalytics(${e.id})">📊 Attendance analytics</button></section>`:`<section class="card"><div class="eyebrow">SAFETY</div><button class="secondary full" onclick="reportEvent(${e.id})">🛡️ Report event</button></section>`}
       </aside></div></div>`;
@@ -800,14 +831,14 @@ async function showEventQR(id){
   try{const r=await api(`/api/events/${id}/invite`,{method:'POST'});const m=document.createElement('div');m.className='eventCreateBackdrop';m.innerHTML=`<div class="eventCreateCard qrCard"><div class="title"><div><div class="eyebrow">SCAN TO JOIN</div><h2>Event QR code</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><img class="eventQrImage" src="https://quickchart.io/qr?size=240&text=${encodeURIComponent(r.url)}" alt="Event QR code"><p class="muted">${esc(r.url)}</p><button class="primary full" onclick="navigator.clipboard.writeText('${esc(r.url)}');toast('Link copied')">Copy invite link</button></div>`;document.body.appendChild(m)}catch(e){toast(e.message)}
 }
 async function showEventParticipants(id){
-  try{const m=await api(`/api/events/${id}/members`);const box=document.createElement('div');box.className='eventCreateBackdrop';box.innerHTML=`<div class="eventCreateCard"><div class="title"><div><div class="eyebrow">PARTICIPANTS</div><h2>${m.length} registered</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><div class="participantList">${m.map(x=>`<div class="memberRow"><div class="miniAvatar">${x.avatar||'💜'}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div></div>`;document.body.appendChild(box)}catch(e){toast(e.message)}
+  try{const m=await api(`/api/events/${id}/members`);const box=document.createElement('div');box.className='eventCreateBackdrop';box.innerHTML=`<div class="eventCreateCard"><div class="title"><div><div class="eyebrow">PARTICIPANTS</div><h2>${m.length} registered</h2></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div><div class="participantList">${m.map(x=>`<div class="memberRow"><div class="miniAvatar">${memberAvatarHtml(x.avatar,x.name)}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div></div>`).join('')}</div></div>`;document.body.appendChild(box)}catch(e){toast(e.message)}
 }
 async function manageEvent(id){
   const e=await api(`/api/events/${id}`);const m=document.createElement('div');m.className='eventCreateBackdrop';m.innerHTML=`<div class="eventCreateCard"><div class="eventCreateHeader"><div class="eventCreateIcon">⚙</div><div class="eventCreateHeaderText"><div class="eventCreateEyebrow">EVENT CONTROL</div><h2>Manage ${esc(e.title)}</h2><p>Publish, announce, moderate participants and track attendance.</p></div><button class="eventCreateClose" onclick="this.closest('.eventCreateBackdrop').remove()">×</button></div>
   <div class="manageStats"><div><b>${e.attendees||0}</b><small>Joined</small></div><div><b>${(e.members||[]).filter(x=>x.attended).length}</b><small>Attended</small></div><div><b>${e.capacity||'∞'}</b><small>Capacity</small></div></div>
   <label class="eventCreateLabel">Announcement</label><textarea id="manageAnnouncement" class="eventCreateInput eventCreateTextarea" placeholder="Tell everyone what they need to know…"></textarea>
   <div class="eventCreateActions"><button class="secondary" onclick="postEventAnnouncement(${id})">📢 Post</button><button class="eventCreateBtn" onclick="eventAnalytics(${id});this.closest('.eventCreateBackdrop').remove()">📊 Analytics</button></div>
-  <div class="participantList">${(e.members||[]).map(x=>`<div class="memberRow"><div class="miniAvatar">${x.avatar||'💜'}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div>${x.role!=='host'?`<button class="iconBtn" onclick="markEventAttendance(${id},${x.id})">✓</button><button class="iconBtn" onclick="removeEventMember(${id},${x.id})">Remove</button>`:''}</div>`).join('')}</div></div>`;document.body.appendChild(m);
+  <div class="participantList">${(e.members||[]).map(x=>`<div class="memberRow"><div class="miniAvatar">${memberAvatarHtml(x.avatar,x.name)}</div><div><b>${esc(x.name)}</b><small>${x.role==='host'?'Host':x.attended?'✓ Attended':'Going'}</small></div>${x.role!=='host'?`<button class="iconBtn" onclick="markEventAttendance(${id},${x.id})">✓</button><button class="iconBtn" onclick="removeEventMember(${id},${x.id})">Remove</button>`:''}</div>`).join('')}</div></div>`;document.body.appendChild(m);
 }
 async function postEventAnnouncement(id){const body=$('manageAnnouncement')?.value.trim();if(!body)return toast('Write an announcement.');try{await api(`/api/events/${id}/announcements`,{method:'POST',body:{body}});toast('📢 Announcement posted');document.querySelector('.eventCreateBackdrop')?.remove();renderEventDetail(id)}catch(e){toast(e.message)}}
 async function markEventAttendance(id,uid){try{await api(`/api/events/${id}/attendance`,{method:'POST',body:{userId:uid}});toast('✓ Attendance marked');manageEvent(id)}catch(e){toast(e.message)}}

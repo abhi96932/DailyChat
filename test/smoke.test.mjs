@@ -56,3 +56,15 @@ test("event UX supports online offline hybrid and invite visibility",()=>{
 test("community UX connects communities to events",()=>{
   assert.match(app,/Find your people\. Build something together/);assert.match(app,/Community members/);assert.match(app,/COMMUNITY EVENTS|Community events/);assert.match(app,/createEventWizard/);
 });
+
+test("community event feed uses safe aggregation and polished event surfaces",()=>{
+  const route=server.slice(server.indexOf('app.get("/api/groups/:id/events"'),server.indexOf('app.post("/api/groups/:id/join"'));
+  assert.match(route,/LEFT JOIN \(SELECT event_id,COUNT\(user_id\)::int attendees FROM event_members GROUP BY event_id\)/);
+  assert.match(app,/function memberAvatarHtml\(/);
+  assert.match(app,/class="miniAvatarImg"/);
+  assert.match(app,/eventsGrid/);
+  const css=fs.readFileSync(new URL("../public/style.css",import.meta.url),"utf8");
+  assert.match(css,/\.eventCreateBackdrop\{\n  position:fixed/);
+  assert.match(css,/\.miniAvatarImg\{/);
+  assert.match(css,/\.eventsGrid\{grid-template-columns/);
+});
