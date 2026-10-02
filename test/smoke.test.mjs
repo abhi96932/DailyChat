@@ -70,3 +70,14 @@ test("community event feed uses safe aggregation and polished event surfaces",()
   assert.match(css,/\.miniAvatarImg\{/);
   assert.match(css,/\.eventsGrid\{grid-template-columns/);
 });
+
+
+test("secure admin bootstrap and verification review are wired",()=>{
+  assert.match(server,/VIBEMEET_OWNER_EMAIL/);assert.match(server,/VIBEMEET_ADMIN_BOOTSTRAP_SECRET/);assert.match(server,/admin_bootstrap/);assert.match(server,/app\.post\('\/api\/admin\/bootstrap'/);
+  assert.match(server,/profile_photo_snapshot/);assert.match(server,/app\.get\('\/api\/admin\/verifications\/:id'/);assert.match(server,/already reviewed/);
+  assert.match(app,/Approve & Verify/);assert.match(app,/LIVE SELFIE/);assert.match(app,/PROFILE PHOTO/);assert.match(app,/verificationReviewModal/);
+});
+
+test("verification is invalidated when primary profile photo changes",()=>{
+  assert.match(server,/resetVerificationForUser/);assert.match(server,/status='cancelled'/);assert.match(server,/Primary profile photo changed before review/);
+});

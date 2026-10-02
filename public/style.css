@@ -719,3 +719,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .actions button{flex:1 1 130px}
   .pagepad{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 }
+
+
+/* Admin identity verification review */
+.verificationReviewOverlay{z-index:10050;padding:18px;overflow:auto}
+.verificationReviewSheet{width:min(980px,100%);max-height:92vh;overflow:auto;padding:26px;border-radius:28px;background:#fff}
+.verificationReviewHead{display:flex;gap:14px;align-items:center;margin-bottom:20px}.verificationReviewHead h2{margin:2px 0 4px}.verificationReviewHead p{margin:0;color:#777;font-size:13px}.verificationReviewIcon{width:52px;height:52px;border-radius:17px;display:grid;place-items:center;background:#f1edff;font-size:25px}
+.verificationCompareGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.verificationCompareGrid figure{margin:0}.verificationCompareGrid figcaption{font-size:11px;font-weight:900;letter-spacing:.08em;color:#6b4ce6;margin:0 0 8px}.verificationPhotoFrame{height:390px;border-radius:22px;background:#f5f4f8;border:1px solid #e7e3ef;overflow:hidden;display:grid;place-items:center;color:#888}.verificationPhotoFrame img{width:100%;height:100%;object-fit:cover;display:block}.verificationChecks{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.verificationChecks span{padding:9px 12px;border-radius:999px;background:#f5f2ff;color:#5741a8;font-size:12px;font-weight:700}.verificationReviewNote label{display:grid;gap:7px;font-size:12px;font-weight:800}.verificationReviewNote label span{font-weight:500;color:#888}.verificationReviewNote textarea{min-height:85px;border:1px solid #ddd8e8;border-radius:14px;padding:12px;resize:vertical;font:inherit}.verificationDecisionActions{display:grid;grid-template-columns:auto 1fr 1fr;gap:10px;margin-top:16px}.verificationDecisionActions button{min-height:48px}
+@media(max-width:700px){.verificationReviewOverlay{padding:8px}.verificationReviewSheet{padding:18px;border-radius:22px;max-height:96vh}.verificationCompareGrid{grid-template-columns:1fr;gap:12px}.verificationPhotoFrame{height:300px}.verificationDecisionActions{grid-template-columns:1fr 1fr}.verificationDecisionActions [data-close]{grid-column:1/-1}.verificationReviewHead{align-items:flex-start}}
