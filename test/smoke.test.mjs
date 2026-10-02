@@ -5,6 +5,8 @@ test("production protections are configured",()=>{assert.match(server,/helmet\(/
 test("schema contains moderation and safety tables",()=>{assert.match(schema,/content_reports/);assert.match(schema,/trip_checkins/);assert.match(schema,/travel_profiles/);});
 test("mobile and media flows remain wired",()=>{assert.match(index,/data-mobile-page="community"/);assert.match(app,/chatImageInput/);assert.match(app,/getUserMedia/);});
 
+test("onboarding finishes into required camera verification",()=>{assert.match(app,/async function finishOnboarding\(\)/);assert.match(app,/await render\('verifyProfile'\)/);assert.match(app,/function renderVerification\(\)/);assert.match(app,/navigator\.mediaDevices\?\.getUserMedia/);assert.match(app,/captureVerificationPhoto/);assert.match(app,/api\('\/api\/verification\/request'/);assert.match(server,/verification_status=CASE WHEN avatar IS DISTINCT FROM \$2/);});
+
 test("dating discovery is one-at-a-time and no public People directory remains",()=>{assert.match(app,/One person at a time/);assert.match(app,/async function renderExplore/);assert.doesNotMatch(index,/data-page="people"/);assert.doesNotMatch(app,/api\/people/);assert.match(app,/singleDiscoverCard/);});
 test("private messaging and calls require a mutual match",()=>{assert.match(server,/usersAreMatched/);assert.match(server,/You can message only mutual matches/);assert.match(server,/await usersAreMatched\(uid,id\)/);});
 test("roadmap v9 safety, verification, matching, AI and analytics endpoints are wired",()=>{

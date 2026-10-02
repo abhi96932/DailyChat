@@ -670,3 +670,52 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .communityWorkspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.7fr);gap:18px}.memberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.memberGrid .memberRow{box-shadow:none}.eventCardPro{padding:0;overflow:hidden;cursor:pointer;transition:.2s}.eventCardPro:hover{transform:translateY(-3px);box-shadow:0 18px 45px rgba(40,25,70,.12)}.eventCover{height:155px;background:linear-gradient(135deg,#27164e,#8c3bc0);position:relative;background-size:cover;background-position:center}.eventTypeBadge,.eventStatusBadge{position:absolute;top:12px;padding:7px 10px;border-radius:999px;background:#ffffffea;color:#3c275c;font-size:11px;font-weight:900}.eventTypeBadge{left:12px}.eventStatusBadge{right:12px}.eventCardBody{padding:18px}.eventCardBody h3{margin:7px 0}.eventDetailGrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,.65fr);gap:18px;margin-top:18px}.eventDetailGrid main,.eventDetailGrid aside{display:grid;gap:18px;align-content:start}.eventInfoGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.eventInfoGrid div{padding:15px;border-radius:16px;background:#f8f6fc}.eventInfoGrid span,.eventInfoGrid b{display:block}.eventInfoGrid span{font-size:12px;color:var(--muted);margin-bottom:5px}.eventAddress{padding:13px;background:#f7f4fb;border-radius:14px}.eventExternalLink{display:inline-block;text-decoration:none;margin-top:8px}.announcement{padding:13px 0;border-bottom:1px solid var(--line)}.announcement:last-child{border-bottom:0}.announcement p{white-space:pre-wrap;line-height:1.5}.announcement small{color:var(--muted)}.eventChatBody{display:grid;gap:8px;max-height:340px;overflow:auto;margin-bottom:10px}.eventMsg{padding:10px 12px;border-radius:14px;background:#f7f4fb}.eventMsg b,.eventMsg span{display:block}.eventMsg span{margin-top:3px;white-space:pre-wrap}.eventWizardCard{width:min(760px,96vw)}.wizardProgress{display:flex;align-items:center;gap:8px;margin:0 0 22px}.wizardProgress span{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#ece9f4;color:#777;font-weight:900}.wizardProgress span.active{background:linear-gradient(135deg,#6d5dfc,#ee4f9b);color:#fff}.wizardProgress i{height:2px;flex:1;background:#e9e5f1}.eventModeCards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.modeChoice{padding:18px;border:1px solid #e3dfeb;background:#faf9fc;border-radius:18px;text-align:left}.modeChoice b,.modeChoice small{display:block}.modeChoice b{margin:6px 0}.modeChoice.active{border-color:#7657f5;background:#f3efff;box-shadow:0 0 0 3px #7657f51a}.eventReview{margin:18px 0;padding:16px;border-radius:18px;background:#f7f4fb}.eventReview b,.eventReview span{display:block}.eventReview span{color:var(--muted);margin-top:4px}.manageStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}.manageStats div{padding:16px;border-radius:16px;background:#f7f4fb;text-align:center}.manageStats b,.manageStats small{display:block}.manageStats b{font-size:25px}.manageStats small{color:var(--muted)}.participantList{display:grid;gap:8px;max-height:420px;overflow:auto}.eventQrImage{width:240px;height:240px;display:block;margin:10px auto;border-radius:18px}.qrCard{text-align:center}.eventHeroActions{position:relative;z-index:3;display:flex;gap:8px}.eventHeroActions .primary{background:#fff;color:#4e2a89}.eventHeroActions .secondary{background:#ffffff18;color:#fff;border:1px solid #ffffff35}.eventCreateActions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.eventCreateBtn{padding:12px 18px;border:0;border-radius:14px;background:linear-gradient(100deg,#18b9e8,#7657f5 55%,#ee4f9b);color:#fff;font-weight:850}.eventCancelBtn{padding:12px 18px;border:0;border-radius:14px;background:#eef0f7;color:#333;font-weight:800}.eventCreateBtn:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:900px){.communityHero,.eventsHero,.communityDetailHero,.eventDetailHero{padding:26px;flex-direction:column;align-items:flex-start}.communityWorkspace,.eventDetailGrid{grid-template-columns:1fr}.eventInfoGrid{grid-template-columns:1fr}.eventHeroActions{width:100%}.eventHeroActions button{flex:1}.eventModeCards{grid-template-columns:1fr}.manageStats{grid-template-columns:1fr 1fr 1fr}}
 @media(max-width:620px){.pagepad{padding:18px 14px}.communityHero h1,.eventsHero h1,.communityDetailHero h1,.eventDetailHero h1{font-size:36px}.communityHero,.eventsHero,.communityDetailHero,.eventDetailHero{border-radius:22px;padding:22px}.eventCreateCard{padding:20px;border-radius:22px}.eventCreateGrid{grid-template-columns:1fr}.eventCreateActions{display:grid;grid-template-columns:1fr}.eventCreateActions button{width:100%}.eventWizardCard{max-height:94vh}.eventInfoGrid{gap:8px}.eventInfoGrid div{padding:12px}.eventQrImage{width:210px;height:210px}}
+
+/* =========================================================
+   VibeMeet mobile onboarding + identity verification polish
+   ========================================================= */
+.onboardingModal[aria-hidden="true"]{display:none!important}
+.onboardingModal{touch-action:pan-y}
+.onboardingCard{scrollbar-gutter:stable}
+.obActions button,.vmVerifyActions button{min-height:52px;border-radius:16px;font-weight:900;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.uploadBtn{min-height:50px;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.vmVerificationPage{max-width:980px;margin:0 auto}
+.vmVerifyHero{display:flex;align-items:center;gap:18px;padding:26px;border-radius:28px;background:linear-gradient(125deg,#151a38 0%,#5544bd 60%,#d94c9b 100%);color:#fff;box-shadow:0 22px 70px rgba(48,28,102,.18)}
+.vmVerifyHero h1{margin:4px 0 8px;font-size:clamp(30px,4vw,46px);letter-spacing:-1.5px}
+.vmVerifyHero p{margin:0;max-width:700px;color:#eceaff;line-height:1.55}
+.vmVerifyIcon{width:62px;height:62px;flex:0 0 62px;border-radius:20px;display:grid;place-items:center;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.2);font-size:28px}
+.vmVerifyGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.vmVerifyCard{padding:22px}
+.vmVerifyStep{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#f0ebff;color:#654bd5;font-weight:950;margin-bottom:12px}
+.vmVerifyChecks{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.vmVerifyChecks span,.vmSecurePill{padding:8px 10px;border-radius:999px;background:#f7f5ff;border:1px solid #e7e1f6;color:#62517e;font-size:11px;font-weight:850}
+.vmCameraCard{margin-top:16px;padding:22px}
+.vmCameraTop{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;margin-bottom:16px}.vmCameraTop h2{margin:0 0 5px}.vmCameraTop p{margin:0;max-width:650px;line-height:1.5}
+.vmCameraFrame{position:relative;width:min(100%,560px);margin:0 auto;border-radius:28px;overflow:hidden;background:#10131f;aspect-ratio:3/4;box-shadow:0 20px 55px rgba(20,17,42,.2)}
+.vmCameraFrame video,.vmCameraFrame img{width:100%;height:100%;display:block;object-fit:cover;transform:scaleX(-1)}
+.vmCameraGuide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:22px;text-align:center;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.5));color:#fff;pointer-events:none}
+.vmCameraGuide span{position:absolute;width:58%;aspect-ratio:.78;border:2px solid rgba(255,255,255,.88);border-radius:48% 48% 43% 43%;top:12%;box-shadow:0 0 0 999px rgba(0,0,0,.08)}
+.vmCameraGuide b{font-size:14px}.vmCameraGuide small{margin-top:4px;opacity:.86}
+.vmCameraState{text-align:center;font-size:12px;font-weight:800;color:#716b7c;padding:12px 0 4px}
+.vmVerifyActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}
+.vmVerifyFineprint{font-size:11px;color:#88818f;line-height:1.5;text-align:center;max-width:760px;margin:14px auto 0}
+@media(max-width:720px){
+  .vmVerifyHero{padding:21px;border-radius:22px;align-items:flex-start}.vmVerifyHero h1{font-size:30px}.vmVerifyIcon{width:52px;height:52px;flex-basis:52px;border-radius:16px}
+  .vmVerifyGrid{grid-template-columns:1fr}.vmCameraCard{padding:16px;border-radius:22px}.vmCameraTop{display:block}.vmSecurePill{display:inline-flex;margin-top:10px}
+  .vmCameraFrame{border-radius:22px;aspect-ratio:4/5}
+  .vmVerifyActions{grid-template-columns:1fr 1fr}.vmVerifyActions button:last-child{grid-column:1/-1}
+}
+@media(max-width:430px){
+  .vmVerifyHero{gap:12px}.vmVerifyHero p{font-size:13px}.vmVerifyActions{grid-template-columns:1fr}.vmVerifyActions button:last-child{grid-column:auto}
+  .vmCameraFrame{aspect-ratio:3/4}.vmCameraGuide span{width:64%;top:10%}
+  .obActions{gap:8px}.obActions button{min-height:54px;font-size:14px}
+}
+
+/* Touch-safe mobile controls across the app. */
+@media(max-width:900px){
+  button,.primary,.secondary,.danger,.pass,.like,.sendBtn{min-height:44px}
+  input,select,textarea{font-size:16px!important}
+  .card,.personCard,.matchCardPro,.eventCard,.groupCard{overflow:hidden}
+  .actions{gap:9px;flex-wrap:wrap}
+  .actions button{flex:1 1 130px}
+  .pagepad{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+}
